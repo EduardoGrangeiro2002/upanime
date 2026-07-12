@@ -50,6 +50,7 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
+    environment: production
     steps:
       - name: Deploy on VPS over SSH
         uses: appleboy/ssh-action@v1
@@ -58,8 +59,13 @@ jobs:
           username: ${{ secrets.VPS_USER }}
           key: ${{ secrets.VPS_SSH_KEY }}
           port: ${{ secrets.VPS_PORT }}
+          envs: PROD_ENV
           script: |
+            set -e
             cd ${{ secrets.VPS_APP_DIR }}
+            printf '%s' "$PROD_ENV" > .env
             docker compose -f docker-compose.prod.yml pull
             docker compose -f docker-compose.prod.yml up -d
             docker image prune -f
+        env:
+          PROD_ENV: ${{ secrets.PROD_ENV }}

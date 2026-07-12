@@ -1,0 +1,45 @@
+services:
+  app:
+    image: ${UPANIME_IMAGE:-alkindar/upanime:latest}
+    pull_policy: always
+    ports:
+      - "127.0.0.1:7891:7891"
+    volumes:
+      - upanime-data:/app/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_PATH=/app/data/upanime.db
+      - DOWNLOAD_PATH=/app/data/downloads
+      - SCRAPER_DIR=/app/scraper
+      - PORT=7891
+      - REDIS_ADDR=redis:6379
+      - AUTH_COOKIE_SECURE=1
+    depends_on:
+      - redis
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
+  caddy:
+    image: caddy:2-alpine
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    depends_on:
+      - app
+    restart: unless-stopped
+
+volumes:
+  upanime-data:
+  redis-data:
+  caddy-data:
+  caddy-config:

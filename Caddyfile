@@ -1,0 +1,5 @@
+# O Caddy obtém e renova o certificado HTTPS automaticamente via Let's Encrypt.
+# Requer um registro A de anime.eduardograngeiro.com.br apontando para o IP do VPS.
+anime.eduardograngeiro.com.br {
+	reverse_proxy app:7891
+}

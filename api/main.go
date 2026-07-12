@@ -33,6 +33,13 @@ func main() {
 		return
 	}
 
+	if len(os.Args) > 1 && os.Args[1] == "classify" {
+		if err := runClassify(); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+
 	cfg := config.Load()
 
 	database, err := db.Open(cfg.DatabasePath)
@@ -198,5 +205,38 @@ func runCreateUser(args []string) error {
 	}
 
 	fmt.Printf("Usuário admin criado com sucesso.\n  email: %s\n  senha temporária: %s\n\nNo primeiro login será exigida a troca da senha.\n", email, password)
+	return nil
+}
+
+func runClassify() error {
+	cfg := config.Load()
+	database, err := db.Open(cfg.DatabasePath)
+	if err != nil {
+		return err
+	}
+	defer database.Close()
+
+	if err := db.Migrate(database); err != nil {
+		return err
+	}
+
+	classifier := service.NewGenreClassifier(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "", store.NewSQLiteAnimeStore(database))
+	if !classifier.Enabled() {
+		return errors.New("classificador desabilitado: defina OPENROUTER_API_KEY")
+	}
+
+	fmt.Println("Classificando animes sem gênero via OpenRouter...")
+	result, err := classifier.ClassifyAll(context.Background())
+	if err != nil {
+		return fmt.Errorf("classificar: %w", err)
+	}
+
+	for _, anime := range result.Classified {
+		fmt.Printf("  ✓ %s → %v\n", anime.Title, anime.Genres)
+	}
+	for _, anime := range result.Failed {
+		fmt.Printf("  ✗ %s: %s\n", anime.Title, anime.Error)
+	}
+	fmt.Printf("\nConcluído: %d classificados, %d já tinham gênero, %d falharam.\n", len(result.Classified), result.Skipped, len(result.Failed))
 	return nil
 }

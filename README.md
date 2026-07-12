@@ -143,6 +143,20 @@ Sem SMTP configurado o app não quebra: os emails são registrados no log do con
 - **MFA por email**: disparado quando o IP ou a localização mudam, ou quando a última validação tem mais de 30 dias. O código de 6 dígitos vive no Redis por 15 minutos e é invalidado após 5 tentativas erradas.
 - "Esqueci minha senha" na tela de login envia um código de redefinição pelo mesmo mecanismo.
 
+## Comandos de manutenção
+
+O binário aceita subcomandos além de subir o servidor:
+
+```bash
+# criar o primeiro usuário admin
+docker compose exec app ./upanime-api create-user voce@exemplo.com
+
+# classificar gêneros de todos os animes ainda sem categoria (via OpenRouter)
+docker compose exec app ./upanime-api classify
+```
+
+O `classify` pula quem já tem gênero, então pode ser rodado quantas vezes quiser. Requer `OPENROUTER_API_KEY` no ambiente.
+
 ## Desenvolvimento
 
 ```bash

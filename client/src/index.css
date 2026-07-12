@@ -1,0 +1,182 @@
+@import "@vidstack/react/player/styles/default/theme.css";
+@import "@vidstack/react/player/styles/default/layouts/video.css";
+@import "tailwindcss";
+
+@font-face {
+  font-family: "Manrope";
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url("/fonts/manrope-latin.woff2") format("woff2");
+}
+
+@font-face {
+  font-family: "Space Grotesk";
+  font-style: normal;
+  font-weight: 500 700;
+  font-display: swap;
+  src: url("/fonts/space-grotesk-latin.woff2") format("woff2");
+}
+
+:root {
+  --radius: 0.75rem;
+  --background: #0f0f17;
+  --foreground: #f2effb;
+  --card: #1c1c27;
+  --card-foreground: #f2effb;
+  --popover: #1c1c27;
+  --popover-foreground: #f2effb;
+  --primary: #ff8fb0;
+  --primary-foreground: #551029;
+  --primary-dim: #ff5c92;
+  --secondary: #2b2b3a;
+  --secondary-foreground: #d8d5e3;
+  --muted: #232330;
+  --muted-foreground: #b0adbc;
+  --accent: #2b2b3a;
+  --accent-foreground: #f2effb;
+  --destructive: #ff6b83;
+  --destructive-foreground: #4c000f;
+  --success: #7ee2a8;
+  --success-foreground: #06301a;
+  --border: #3a3948;
+  --input: #16161f;
+  --ring: #ff8fb0;
+  --surface-low: #16161f;
+  --surface: #1c1c27;
+  --surface-high: #232330;
+  --surface-highest: #2b2b3a;
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-success: var(--success);
+  --color-success-foreground: var(--success-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-primary-dim: var(--primary-dim);
+  --color-surface-low: var(--surface-low);
+  --color-surface: var(--surface);
+  --color-surface-high: var(--surface-high);
+  --color-surface-highest: var(--surface-highest);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-family: "Manrope", sans-serif;
+    font-feature-settings: "cv02", "cv03", "cv04";
+  }
+}
+
+@utility scrollbar-hide {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+  &::-webkit-scrollbar {
+    display: none;
+  }
+}
+
+@utility scrollbar-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--surface-highest) transparent;
+  &::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  &::-webkit-scrollbar-thumb {
+    background: var(--surface-highest);
+    border-radius: 3px;
+  }
+  &::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@utility glass {
+  background: rgba(22, 22, 31, 0.6);
+  backdrop-filter: blur(24px);
+}
+
+@utility neon-primary {
+  box-shadow: 0 0 30px rgba(255, 92, 146, 0.15);
+}
+
+@utility font-display {
+  font-family: "Space Grotesk", sans-serif;
+}
+
+[data-tooltip] {
+  position: relative;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  left: 50%;
+  top: calc(100% + 8px);
+  transform: translateX(-50%);
+  background: var(--surface-highest);
+  color: var(--foreground);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.4;
+  letter-spacing: normal;
+  text-transform: none;
+  white-space: pre-line;
+  width: max-content;
+  max-width: 240px;
+  padding: 5px 9px;
+  border-radius: 7px;
+  opacity: 0;
+  pointer-events: none;
+  z-index: 60;
+  transition: opacity 120ms ease-out;
+}
+
+[data-tooltip]:hover::after,
+[data-tooltip]:focus-visible::after {
+  opacity: 1;
+}
+
+[data-tooltip-pos="top"]::after {
+  top: auto;
+  bottom: calc(100% + 8px);
+}
+
+[data-tooltip-pos="left"]::after {
+  left: auto;
+  right: 0;
+  transform: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  [data-tooltip]::after {
+    transition: none;
+  }
+}

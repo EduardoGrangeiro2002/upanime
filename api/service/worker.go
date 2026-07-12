@@ -1,0 +1,33 @@
+package service
+
+import (
+	"context"
+)
+
+type UpscaleWorkerJob struct {
+	JobID            int64    `json:"jobId"`
+	SourceURL        string   `json:"sourceUrl"`
+	SourceStorageKey string   `json:"sourceStorageKey"`
+	ResultStorageKey string   `json:"resultStorageKey"`
+	TargetHeight     int      `json:"targetHeight,omitempty"`
+	BatchSize        *int     `json:"batchSize,omitempty"`
+	Sharpen          *float64 `json:"sharpen,omitempty"`
+	Saturation       *float64 `json:"saturation,omitempty"`
+	Contrast         *float64 `json:"contrast,omitempty"`
+	Interpolate      bool     `json:"interpolate,omitempty"`
+	CallbackURL      string   `json:"callbackUrl,omitempty"`
+}
+
+type RunPodJobStatus struct {
+	ID               string            `json:"id"`
+	Status           string            `json:"status"`
+	Output           map[string]string `json:"output,omitempty"`
+	Error            string            `json:"error,omitempty"`
+	DelayTime        int               `json:"delayTime,omitempty"`
+	ExecutionTime    int               `json:"executionTime,omitempty"`
+}
+
+type UpscaleWorkerClient interface {
+	Enqueue(ctx context.Context, job UpscaleWorkerJob) (string, error)
+	Status(ctx context.Context, runpodJobID string) (*RunPodJobStatus, error)
+}

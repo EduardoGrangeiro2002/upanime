@@ -1,0 +1,1 @@
+ALTER TABLE animes ADD COLUMN cover_path TEXT NOT NULL DEFAULT '';

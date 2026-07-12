@@ -1,0 +1,1 @@
+ALTER TABLE upscale_jobs ADD COLUMN target_height INTEGER NOT NULL DEFAULT 1080;

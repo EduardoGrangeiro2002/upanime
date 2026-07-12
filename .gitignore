@@ -1,0 +1,71 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+node_modules
+dist
+dist-ssr
+*.local
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# Go
+api/tmp/
+api/*.db
+
+# Python
+scraper/.venv/
+scraper/__pycache__/
+scraper/**/__pycache__/
+worker/.venv/
+worker/.pytest_cache/
+worker/**/__pycache__/
+worker/src/*.egg-info/
+worker/.ipynb_checkpoints/
+*.pyc
+
+# SQLite
+*.db
+*.db-journal
+*.db-shm
+*.db-wal
+
+# Downloads
+downloads/
+data/
+
+# Local tooling
+.ai-jail
+.playwright-mcp/
+.serena/
+mempalace.yaml
+.claude/
+tmp/
+
+# Model artifacts
+models/
+*.onnx
+*.engine
+*.pth
+*.pt
+*.ckpt
+*.safetensors

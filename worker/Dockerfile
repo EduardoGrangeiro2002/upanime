@@ -7,6 +7,8 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WORKER_MODEL_PATH=/data/models/realesr-animevideov3.pth \
     WORKER_HURRDEBLUR_MODEL_PATH=/data/models/1x-HurrDeblur-SuperUltraCompact.pth \
     WORKER_RIFE_DIR=/data/models/Practical-RIFE \
+    WORKER_TAGGER_MODEL_PATH=/data/models/wd-vit-tagger-v3.onnx \
+    WORKER_TAGGER_TAGS_PATH=/data/models/wd-vit-tagger-v3-tags.csv \
     WORKER_TARGET_HEIGHT=1080 \
     WORKER_ENCODE_PRESET=medium \
     WORKER_REQUEST_TIMEOUT_SECONDS=1800 \
@@ -29,7 +31,11 @@ RUN mkdir -p /data/tmp /data/models \
     && curl -fSL -o /data/models/realesr-animevideov3.pth \
        https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth \
     && curl -fSL -o /data/models/1x-HurrDeblur-SuperUltraCompact.pth \
-       https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth
+       https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth \
+    && curl -fSL -o /data/models/wd-vit-tagger-v3.onnx \
+       https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/model.onnx \
+    && curl -fSL -o /data/models/wd-vit-tagger-v3-tags.csv \
+       https://huggingface.co/SmilingWolf/wd-vit-tagger-v3/resolve/main/selected_tags.csv
 
 RUN git clone --depth 1 https://github.com/hzwer/Practical-RIFE.git /data/models/Practical-RIFE \
     && pip install --no-cache-dir gdown \

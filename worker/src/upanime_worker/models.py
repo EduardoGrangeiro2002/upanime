@@ -19,6 +19,9 @@ class WorkerJobRequest(BaseModel):
     contrast: float | None = Field(default=None)
     interpolate: bool = Field(default=False)
     pan_ratio: float | None = Field(default=None, alias="panRatio")
+    effects: bool = Field(default=False)
+    effects_strength: float | None = Field(default=None, alias="effectsStrength")
+    effects_sensitivity: float | None = Field(default=None, alias="effectsSensitivity")
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
     @field_validator("target_height")
@@ -34,6 +37,20 @@ class WorkerJobRequest(BaseModel):
         if value is None:
             return None
         return min(0.9, max(0.6, value))
+
+    @field_validator("effects_strength")
+    @classmethod
+    def clamp_effects_strength(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return min(1.5, max(0.0, value))
+
+    @field_validator("effects_sensitivity")
+    @classmethod
+    def clamp_effects_sensitivity(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return min(1.5, max(0.5, value))
 
 
 class WorkerCallbackPayload(BaseModel):

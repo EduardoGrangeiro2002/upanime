@@ -16,6 +16,9 @@ type UpscaleWorkerJob struct {
 	Contrast         *float64 `json:"contrast,omitempty"`
 	Interpolate      bool     `json:"interpolate,omitempty"`
 	PanRatio         *float64 `json:"panRatio,omitempty"`
+	Effects          bool     `json:"effects,omitempty"`
+	EffectsStrength  *float64 `json:"effectsStrength,omitempty"`
+	EffectsSens      *float64 `json:"effectsSensitivity,omitempty"`
 	CallbackURL      string   `json:"callbackUrl,omitempty"`
 }
 

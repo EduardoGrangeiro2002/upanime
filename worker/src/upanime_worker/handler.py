@@ -14,6 +14,7 @@ logging.basicConfig(level=logging.INFO)
 def _build_runner() -> UpscaleJobRunner:
     from .quality_pipeline import QualityUpscalePipeline
     from .r2_storage import R2StorageClient
+    from .tagger import EffectTagger
 
     settings = load_settings()
 
@@ -24,6 +25,7 @@ def _build_runner() -> UpscaleJobRunner:
         encode_preset=settings.encode_preset,
         enable_torch_compile=settings.enable_torch_compile,
         rife_dir=settings.rife_dir,
+        tagger=EffectTagger(settings.tagger_model_path, settings.tagger_tags_path),
     )
     storage = R2StorageClient(
         account_id=settings.r2_account_id,

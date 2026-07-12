@@ -72,3 +72,6 @@ models/
 
 # migração pontual do catálogo (contém URLs/storage_keys)
 catalog-migration.sql
+
+# vídeos de teste locais
+/*.mp4

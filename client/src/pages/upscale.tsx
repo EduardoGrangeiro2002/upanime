@@ -18,6 +18,8 @@ export function EditionPage() {
   const [targetHeight, setTargetHeight] = useState<TargetHeight>(1080)
   const [interpolate, setInterpolate] = useState(false)
   const [panRatio, setPanRatio] = useState(0.6)
+  const [effects, setEffects] = useState(false)
+  const [effectsParams, setEffectsParams] = useState({ strength: 1.0, sensitivity: 1.0 })
   const [encodeParams, setEncodeParams] = useState<EncodeParams>({ batchSize: 2, sharpen: 0.5, saturation: 1.20, contrast: 1.05 })
   const startUpscale = useStartUpscale()
 
@@ -44,6 +46,8 @@ export function EditionPage() {
         contrast: encodeParams.contrast,
         interpolate,
         ...(interpolate ? { panRatio } : {}),
+        effects,
+        ...(effects ? { effectsStrength: effectsParams.strength, effectsSensitivity: effectsParams.sensitivity } : {}),
       },
       {
         onSuccess: () => {
@@ -87,6 +91,10 @@ export function EditionPage() {
         onInterpolateChange={setInterpolate}
         panRatio={panRatio}
         onPanRatioChange={setPanRatio}
+        effects={effects}
+        onEffectsChange={setEffects}
+        effectsParams={effectsParams}
+        onEffectsParamsChange={setEffectsParams}
         encodeParams={encodeParams}
         onEncodeParamsChange={setEncodeParams}
       />
@@ -351,6 +359,10 @@ function ProcessingConfig({
   onInterpolateChange,
   panRatio,
   onPanRatioChange,
+  effects,
+  onEffectsChange,
+  effectsParams,
+  onEffectsParamsChange,
   encodeParams,
   onEncodeParamsChange,
 }: {
@@ -360,6 +372,10 @@ function ProcessingConfig({
   onInterpolateChange: (value: boolean) => void
   panRatio: number
   onPanRatioChange: (value: number) => void
+  effects: boolean
+  onEffectsChange: (value: boolean) => void
+  effectsParams: { strength: number; sensitivity: number }
+  onEffectsParamsChange: (params: { strength: number; sensitivity: number }) => void
   encodeParams: EncodeParams
   onEncodeParamsChange: (params: EncodeParams) => void
 }) {
@@ -437,6 +453,48 @@ function ProcessingConfig({
               step={0.05}
               onChange={onPanRatioChange}
             />
+          )}
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span
+              className="text-sm font-medium underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 cursor-help"
+              data-tooltip="Composição moderna nos efeitos de energia (fogo, explosão, magia): bloom, cor, luz na cena e textura — só em planos onde a IA detecta efeito; o resto passa intocado."
+              tabIndex={0}
+            >
+              Modernizar efeitos
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant={effects ? "default" : "outline"}
+              aria-pressed={effects}
+              onClick={() => onEffectsChange(!effects)}
+            >
+              {effects ? "Ativada" : "Desativada"}
+            </Button>
+          </div>
+          {effects && (
+            <>
+              <ParamSlider
+                label="Intensidade dos efeitos"
+                tooltip="Ganho geral da composição (bloom, luz, textura). 1.00 é o calibrado; acima disso o efeito fica mais dramático."
+                value={effectsParams.strength}
+                min={0.2}
+                max={1.5}
+                step={0.05}
+                onChange={(v) => onEffectsParamsChange({ ...effectsParams, strength: v })}
+              />
+              <ParamSlider
+                label="Sensibilidade da detecção"
+                tooltip="Quão agressiva é a detecção de regiões de efeito. Valores altos pegam efeitos mais escuros, mas podem vazar para roupas e cabelos coloridos."
+                value={effectsParams.sensitivity}
+                min={0.5}
+                max={1.5}
+                step={0.05}
+                onChange={(v) => onEffectsParamsChange({ ...effectsParams, sensitivity: v })}
+              />
+            </>
           )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

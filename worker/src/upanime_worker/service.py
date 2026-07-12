@@ -23,6 +23,10 @@ class VideoPipeline(Protocol):
         contrast: float | None = None,
         interpolate: bool = False,
         pan_residual_ratio: float | None = None,
+        effects: bool = False,
+        effects_strength: float | None = None,
+        effects_sensitivity: float | None = None,
+        dataset_dir: Path | None = None,
     ) -> None: ...
 
 
@@ -52,6 +56,7 @@ class UpscaleJobRunner:
         work_dir = self._temp_root / str(job.job_id)
         input_path = work_dir / "input.mp4"
         output_path = work_dir / "output.mp4"
+        dataset_dir = work_dir / "dataset" if job.effects else None
 
         try:
             self._prepare_work_dir(work_dir)
@@ -66,9 +71,14 @@ class UpscaleJobRunner:
                 contrast=job.contrast,
                 interpolate=job.interpolate or self._force_interpolate,
                 pan_residual_ratio=job.pan_ratio,
+                effects=job.effects,
+                effects_strength=job.effects_strength,
+                effects_sensitivity=job.effects_sensitivity,
+                dataset_dir=dataset_dir,
             )
             self._storage.upload_file(output_path, job.result_storage_key)
             self._ensure_uploaded(job.result_storage_key)
+            self._upload_dataset(dataset_dir, job.job_id)
         except Exception as exc:
             logging.exception("worker job %s failed", job.job_id)
             self._notify_failure(job, str(exc))
@@ -96,6 +106,15 @@ class UpscaleJobRunner:
         if self._storage.exists(storage_key):
             return
         raise RuntimeError(f"uploaded file not found in storage: {storage_key}")
+
+    def _upload_dataset(self, dataset_dir: Path | None, job_id: int) -> None:
+        if dataset_dir is None or not dataset_dir.exists():
+            return
+        try:
+            for sample in sorted(dataset_dir.iterdir()):
+                self._storage.upload_file(sample, f"datasets/effects/{job_id}/{sample.name}")
+        except Exception:
+            logging.exception("dataset upload failed for job %d (job result unaffected)", job_id)
 
     def _notify_success(self, job: WorkerJobRequest) -> None:
         if not job.callback_url:

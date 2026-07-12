@@ -12,6 +12,9 @@ type UpscaleJob struct {
 	Contrast         *float64 `json:"contrast,omitempty"`
 	Interpolate      bool     `json:"interpolate,omitempty"`
 	PanRatio         *float64 `json:"panRatio,omitempty"`
+	Effects          bool     `json:"effects,omitempty"`
+	EffectsStrength  *float64 `json:"effectsStrength,omitempty"`
+	EffectsSens      *float64 `json:"effectsSensitivity,omitempty"`
 	RunPodJobID      string   `json:"-"`
 	SourceStorageKey string   `json:"-"`
 	ResultStorageKey string   `json:"resultStorageKey,omitempty"`
@@ -27,13 +30,16 @@ type UpscaleJob struct {
 }
 
 type CreateUpscaleRequest struct {
-	AnimeID      StringID   `json:"animeId"`
-	EpisodeIDs   []StringID `json:"episodeIds"`
-	TargetHeight int        `json:"targetHeight,omitempty"`
-	BatchSize    *int       `json:"batchSize,omitempty"`
-	Sharpen      *float64   `json:"sharpen,omitempty"`
-	Saturation   *float64   `json:"saturation,omitempty"`
-	Contrast     *float64   `json:"contrast,omitempty"`
-	Interpolate  bool       `json:"interpolate,omitempty"`
-	PanRatio     *float64   `json:"panRatio,omitempty"`
+	AnimeID         StringID   `json:"animeId"`
+	EpisodeIDs      []StringID `json:"episodeIds"`
+	TargetHeight    int        `json:"targetHeight,omitempty"`
+	BatchSize       *int       `json:"batchSize,omitempty"`
+	Sharpen         *float64   `json:"sharpen,omitempty"`
+	Saturation      *float64   `json:"saturation,omitempty"`
+	Contrast        *float64   `json:"contrast,omitempty"`
+	Interpolate     bool       `json:"interpolate,omitempty"`
+	PanRatio        *float64   `json:"panRatio,omitempty"`
+	Effects         bool       `json:"effects,omitempty"`
+	EffectsStrength *float64   `json:"effectsStrength,omitempty"`
+	EffectsSens     *float64   `json:"effectsSensitivity,omitempty"`
 }

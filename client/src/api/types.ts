@@ -128,4 +128,7 @@ export interface UpscaleRequest {
   contrast?: number
   interpolate?: boolean
   panRatio?: number
+  effects?: boolean
+  effectsStrength?: number
+  effectsSensitivity?: number
 }

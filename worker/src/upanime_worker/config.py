@@ -11,6 +11,8 @@ class WorkerSettings:
     model_path: Path
     hurrdeblur_model_path: Path
     rife_dir: Path
+    tagger_model_path: Path
+    tagger_tags_path: Path
     target_height: int
     encode_preset: str
     force_interpolate: bool
@@ -29,6 +31,8 @@ def load_settings() -> WorkerSettings:
         model_path=Path(os.getenv("WORKER_MODEL_PATH", "./models/realesr-animevideov3.pth")),
         hurrdeblur_model_path=Path(os.getenv("WORKER_HURRDEBLUR_MODEL_PATH", "./models/1x-HurrDeblur-SuperUltraCompact.pth")),
         rife_dir=Path(os.getenv("WORKER_RIFE_DIR", "./models/Practical-RIFE")),
+        tagger_model_path=Path(os.getenv("WORKER_TAGGER_MODEL_PATH", "./models/wd-vit-tagger-v3.onnx")),
+        tagger_tags_path=Path(os.getenv("WORKER_TAGGER_TAGS_PATH", "./models/wd-vit-tagger-v3-tags.csv")),
         target_height=int(os.getenv("WORKER_TARGET_HEIGHT", "1080")),
         encode_preset=os.getenv("WORKER_ENCODE_PRESET", "medium"),
         force_interpolate=os.getenv("WORKER_FORCE_INTERPOLATE", "0") == "1",

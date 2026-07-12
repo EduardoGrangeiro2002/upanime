@@ -29,7 +29,7 @@ describe("Upscale Page", () => {
 
     expect(screen.queryByRole("slider", { name: "Sensibilidade de pan" })).not.toBeInTheDocument()
 
-    const toggle = screen.getByRole("button", { name: "Desativada" })
+    const toggle = screen.getAllByRole("button", { name: "Desativada" })[0]
     expect(toggle).toHaveAttribute("aria-pressed", "false")
 
     await user.click(toggle)
@@ -37,6 +37,19 @@ describe("Upscale Page", () => {
     const enabled = screen.getByRole("button", { name: "Ativada" })
     expect(enabled).toHaveAttribute("aria-pressed", "true")
     expect(screen.getByRole("slider", { name: "Sensibilidade de pan" })).toBeInTheDocument()
+  })
+
+  it("toggles effects modernization and reveals its sliders", async () => {
+    const user = userEvent.setup()
+    await openUpscalePage(user)
+
+    expect(screen.queryByRole("slider", { name: "Intensidade dos efeitos" })).not.toBeInTheDocument()
+
+    const toggle = screen.getAllByRole("button", { name: "Desativada" })[1]
+    await user.click(toggle)
+
+    expect(screen.getByRole("slider", { name: "Intensidade dos efeitos" })).toBeInTheDocument()
+    expect(screen.getByRole("slider", { name: "Sensibilidade da detecção" })).toBeInTheDocument()
   })
 
   it("shows the action bar only after selecting episodes and starts the job", async () => {

@@ -15,6 +15,7 @@ from pathlib import Path
 
 import requests
 
+from .effects import EffectsComp
 from .interpolation import (
     PAN_RESIDUAL_RATIO,
     FrameDeduper,
@@ -24,6 +25,7 @@ from .interpolation import (
     detect_scene_cuts,
     plan_output_frames,
 )
+from .tagger import EffectTagger
 
 MODEL_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
 HURRDEBLUR_URL = "https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth"
@@ -83,6 +85,7 @@ class QualityUpscalePipeline:
         encode_preset: str,
         enable_torch_compile: bool,
         rife_dir: Path | None = None,
+        tagger: EffectTagger | None = None,
     ) -> None:
         self._model_path = model_path
         self._hurrdeblur_model_path = hurrdeblur_model_path
@@ -90,6 +93,7 @@ class QualityUpscalePipeline:
         self._encode_preset = encode_preset
         self._enable_torch_compile = enable_torch_compile
         self._rife_dir = rife_dir
+        self._tagger = tagger
         self._runtime: PipelineRuntime | None = None
         self._runtime_lock = threading.Lock()
         self._rife_model: object | None = None
@@ -106,6 +110,10 @@ class QualityUpscalePipeline:
         contrast: float | None = None,
         interpolate: bool = False,
         pan_residual_ratio: float | None = None,
+        effects: bool = False,
+        effects_strength: float | None = None,
+        effects_sensitivity: float | None = None,
+        dataset_dir: Path | None = None,
     ) -> None:
         encode_params = EncodeParams(
             sharpen=max(0.0, min(2.0, sharpen)) if sharpen is not None else SHARPEN_GPU_AMOUNT,
@@ -116,15 +124,23 @@ class QualityUpscalePipeline:
         effective_batch = max(1, min(16, batch_size)) if batch_size is not None else BATCH_SIZE
         effective_pan_ratio = pan_residual_ratio if pan_residual_ratio is not None else PAN_RESIDUAL_RATIO
         logging.info(
-            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f interpolate=%s pan_ratio=%.2f",
-            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast, interpolate, effective_pan_ratio,
+            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f interpolate=%s pan_ratio=%.2f effects=%s",
+            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast, interpolate, effective_pan_ratio, effects,
         )
         metadata = self._probe_video(input_path, effective_height)
         runtime = self._load_runtime()
+        comp = None
+        if effects:
+            comp = EffectsComp(
+                runtime.torch,
+                runtime.device,
+                strength=effects_strength if effects_strength is not None else 1.0,
+                sensitivity=effects_sensitivity if effects_sensitivity is not None else 1.0,
+            )
         if interpolate:
-            self._run_chain(input_path, output_path, metadata, runtime, encode_params, effective_batch, effective_pan_ratio)
+            self._run_chain(input_path, output_path, metadata, runtime, encode_params, effective_batch, effective_pan_ratio, comp, dataset_dir)
             return
-        self._run_stream(input_path, output_path, metadata, runtime, encode_params, effective_batch)
+        self._run_stream(input_path, output_path, metadata, runtime, encode_params, effective_batch, comp, dataset_dir)
 
     def _load_runtime(self) -> PipelineRuntime:
         with self._runtime_lock:
@@ -299,6 +315,45 @@ class QualityUpscalePipeline:
             outscale=outscale,
         )
 
+    def _shot_gate(
+        self,
+        frame: object,
+        shot_index: int,
+        comp: EffectsComp,
+        dataset_dir: Path | None,
+        runtime: PipelineRuntime,
+    ) -> bool:
+        comp.reset()
+        if self._tagger is None or not self._tagger.available():
+            return True
+        tags = self._tagger.shot_effect_tags(frame)
+        if not tags:
+            return False
+        self._save_dataset_sample(frame, tags, shot_index, dataset_dir, runtime)
+        return True
+
+    def _save_dataset_sample(
+        self,
+        frame: object,
+        tags: list[str],
+        shot_index: int,
+        dataset_dir: Path | None,
+        runtime: PipelineRuntime,
+    ) -> None:
+        if dataset_dir is None:
+            return
+        try:
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            runtime.cv2.imwrite(str(dataset_dir / f"shot_{shot_index:04d}.jpg"), frame)
+            (dataset_dir / f"shot_{shot_index:04d}.json").write_text(json.dumps({"tags": tags}))
+        except Exception:
+            logging.exception("dataset sample save failed for shot %d", shot_index)
+
+    def _shot_small_gray(self, frame: object, runtime: PipelineRuntime) -> object:
+        gray = runtime.cv2.cvtColor(frame, runtime.cv2.COLOR_BGR2GRAY).astype(runtime.numpy.float32) / 255.0
+        small_height = max(2, int(round(gray.shape[0] * CLASSIFY_GRAY_WIDTH / gray.shape[1])))
+        return runtime.cv2.resize(gray, (CLASSIFY_GRAY_WIDTH, small_height))
+
     def _run_stream(
         self,
         input_path: Path,
@@ -307,6 +362,8 @@ class QualityUpscalePipeline:
         runtime: PipelineRuntime,
         encode_params: EncodeParams | None = None,
         batch_size: int = BATCH_SIZE,
+        comp: EffectsComp | None = None,
+        dataset_dir: Path | None = None,
     ) -> None:
         frame_bytes = metadata.width * metadata.height * 3
         expected_frames = metadata.total_frames or int(
@@ -355,6 +412,10 @@ class QualityUpscalePipeline:
         started = time.time()
         handled = 0
         pending_images: list[object] = []
+        cut_threshold = (1.0 - 0.4) * 0.5
+        comp_active = False
+        prev_small = None
+        shot_index = 0
 
         decoder.start()
         encoder.start()
@@ -364,18 +425,30 @@ class QualityUpscalePipeline:
             if item is sentinel:
                 break
 
+            if comp is not None:
+                small = self._shot_small_gray(item, runtime)
+                is_first = prev_small is None
+                is_cut = not is_first and float(abs(small - prev_small).mean()) > cut_threshold
+                if is_first or is_cut:
+                    if pending_images:
+                        self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params, comp if comp_active else None)
+                        pending_images = []
+                    comp_active = self._shot_gate(item, shot_index, comp, dataset_dir, runtime)
+                    shot_index += 1
+                prev_small = small
+
             pending_images.append(item)
             handled += 1
 
             if len(pending_images) < batch_size:
                 continue
 
-            self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params)
+            self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params, comp if comp_active else None)
             pending_images = []
             self._log_progress(handled, expected_frames, started)
 
         if pending_images:
-            self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params)
+            self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params, comp if comp_active else None)
 
         encode_queue.put(sentinel)
         decoder.join()
@@ -395,8 +468,9 @@ class QualityUpscalePipeline:
         runtime: PipelineRuntime,
         metadata: VideoMetadata,
         encode_params: EncodeParams | None = None,
+        comp: EffectsComp | None = None,
     ) -> None:
-        frames = self._upscale_batch(pending_images, runtime, metadata, encode_params)
+        frames = self._upscale_batch(pending_images, runtime, metadata, encode_params, comp)
         for frame in frames:
             encode_queue.put(frame)
 
@@ -507,6 +581,8 @@ class QualityUpscalePipeline:
         encode_params: EncodeParams,
         batch_size: int,
         pan_residual_ratio: float = PAN_RESIDUAL_RATIO,
+        comp: EffectsComp | None = None,
+        dataset_dir: Path | None = None,
     ) -> None:
         rife = self._load_rife(runtime)
 
@@ -530,6 +606,21 @@ class QualityUpscalePipeline:
             len(plan), interp_count, 100.0 * interp_count / max(len(plan), 1), sum(allow), max(len(allow), 1),
         )
         collapsed = collapse_plan(plan)
+
+        segment_ids = [0] * len(unique_frames)
+        for i in range(1, len(unique_frames)):
+            segment_ids[i] = segment_ids[i - 1] + (1 if is_scene_cut[i - 1] else 0)
+        segment_comp: dict[int, bool] = {}
+        if comp is not None:
+            for i, unique in enumerate(unique_frames):
+                sid = segment_ids[i]
+                if sid in segment_comp:
+                    continue
+                segment_comp[sid] = self._shot_gate(unique, sid, comp, dataset_dir, runtime)
+            logging.info(
+                "chain comp gate: %d/%d segments approved",
+                sum(1 for flag in segment_comp.values() if flag), len(segment_comp),
+            )
 
         encode_proc = subprocess.Popen(
             self._build_encode_command(
@@ -557,8 +648,19 @@ class QualityUpscalePipeline:
         cached_left = None
         cached_right_index = -1
         cached_right = None
+        current_segment = -1
+        comp_active = False
 
         for op, count in collapsed:
+            drawing_index = op.left_index if isinstance(op, InterpolateFrame) else op.index
+            if comp is not None and segment_ids[drawing_index] != current_segment:
+                if pending:
+                    self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params, comp if comp_active else None)
+                    pending = []
+                current_segment = segment_ids[drawing_index]
+                comp.reset()
+                comp_active = segment_comp.get(current_segment, False)
+
             if isinstance(op, InterpolateFrame):
                 if cached_left_index != op.left_index:
                     cached_left = self._to_rife_tensor(unique_frames[op.left_index], runtime)
@@ -577,12 +679,12 @@ class QualityUpscalePipeline:
             if len(pending) < batch_size:
                 continue
 
-            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params)
+            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params, comp if comp_active else None)
             pending = []
             self._log_progress(handled, len(plan), started_pass2)
 
         if pending:
-            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params)
+            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params, comp if comp_active else None)
 
         encode_queue.put(sentinel)
         encoder.join()
@@ -602,8 +704,9 @@ class QualityUpscalePipeline:
         runtime: PipelineRuntime,
         metadata: VideoMetadata,
         encode_params: EncodeParams | None = None,
+        comp: EffectsComp | None = None,
     ) -> None:
-        frames = self._upscale_batch([frame for frame, _ in pending], runtime, metadata, encode_params)
+        frames = self._upscale_batch([frame for frame, _ in pending], runtime, metadata, encode_params, comp)
         for frame, (_, count) in zip(frames, pending):
             for _ in range(count):
                 encode_queue.put(frame)
@@ -666,6 +769,7 @@ class QualityUpscalePipeline:
         runtime: PipelineRuntime,
         metadata: VideoMetadata,
         encode_params: EncodeParams | None = None,
+        comp: EffectsComp | None = None,
     ) -> list[object]:
         batch, sizes = self._prepare_batch(images, runtime)
 
@@ -680,7 +784,7 @@ class QualityUpscalePipeline:
         runtime.torch.cuda.synchronize()
 
         sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
-        return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount)
+        return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
 
     def _prepare_batch(
         self, images: list[object], runtime: PipelineRuntime
@@ -732,6 +836,7 @@ class QualityUpscalePipeline:
         runtime: PipelineRuntime,
         metadata: VideoMetadata,
         sharpen_amount: float = SHARPEN_GPU_AMOUNT,
+        comp: EffectsComp | None = None,
     ) -> list[object]:
         results = []
         for index, (orig_h, orig_w) in enumerate(sizes):
@@ -748,6 +853,10 @@ class QualityUpscalePipeline:
             )
 
             frame = self._run_hurrdeblur(frame, runtime)
+
+            if comp is not None:
+                with runtime.torch.inference_mode():
+                    frame = comp.process(frame.float()).clamp(0, 1)
 
             frame = (
                 frame.clone().mul_(255.0)

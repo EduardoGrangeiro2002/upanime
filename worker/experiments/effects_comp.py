@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from collections import deque
 from pathlib import Path
 
 import cv2
@@ -11,6 +12,11 @@ MASK_S_MIN = 0.6
 MASK_HOT_V = 0.93
 MASK_HOT_NEAR_SAT = 15
 MASK_OPEN_KERNEL = 7
+GROW_S_MIN = 0.55
+GROW_V_MIN = 0.45
+GROW_ITERATIONS = 16
+GROW_WEIGHT = 0.65
+SCENE_CUT_DIFF = 0.3
 MASK_MIN_AREA = 0.004
 MASK_EMA = 0.55
 BLOOM_SIGMAS = (6, 18, 48)
@@ -21,7 +27,12 @@ CORE_V = 0.95
 LIGHT_WRAP_SIGMA = 61
 LIGHT_WRAP_GAIN = 0.4
 PARTICLES_PER_FRAME = 45
-PARTICLE_LIFE = 22
+PARTICLE_LIFE = 10
+PARTICLE_SPAWN_MIN_AREA = 0.012
+PARTICLE_SPAWN_CORE = 0.8
+PARTICLE_STARVE_FRAMES = 6
+PULSE_WINDOW = 8
+PULSE_MIN_VARIATION = 0.15
 PARTICLE_DRIFT = -1.4
 FLOW_SCALE = 0.25
 HEAT_AMPLITUDE = 2.4
@@ -36,9 +47,20 @@ def effect_mask(frame: np.ndarray) -> np.ndarray:
     saturated = ((v > MASK_V_MIN) & (s > MASK_S_MIN)).astype(np.float32)
     near_saturated = cv2.dilate(saturated, np.ones((MASK_HOT_NEAR_SAT, MASK_HOT_NEAR_SAT), np.uint8))
     hot = ((v > MASK_HOT_V).astype(np.float32)) * near_saturated
-    raw = np.clip(saturated + hot, 0, 1)
+    seed = np.clip(saturated + hot, 0, 1)
     kernel = np.ones((MASK_OPEN_KERNEL, MASK_OPEN_KERNEL), np.uint8)
-    raw = cv2.morphologyEx(raw, cv2.MORPH_OPEN, kernel)
+    seed = cv2.morphologyEx(seed, cv2.MORPH_OPEN, kernel)
+
+    weak = ((s > GROW_S_MIN) & (v > GROW_V_MIN)).astype(np.float32)
+    grown = seed.copy()
+    grow_kernel = np.ones((5, 5), np.uint8)
+    for _ in range(GROW_ITERATIONS):
+        expanded = cv2.dilate(grown, grow_kernel) * weak
+        if np.array_equal(expanded, grown):
+            break
+        grown = expanded
+
+    raw = np.clip(seed + (grown - seed) * GROW_WEIGHT, 0, 1)
     raw = cv2.dilate(raw, np.ones((5, 5), np.uint8))
     return cv2.GaussianBlur(raw, (0, 0), 4)
 
@@ -83,9 +105,16 @@ class ParticleField:
         self.life = np.zeros(0, dtype=np.float32)
         self.color = np.zeros((0, 3), dtype=np.float32)
 
+    def clear(self) -> None:
+        self.pos = np.zeros((0, 2), dtype=np.float32)
+        self.vel = np.zeros((0, 2), dtype=np.float32)
+        self.life = np.zeros(0, dtype=np.float32)
+        self.color = np.zeros((0, 3), dtype=np.float32)
+
     def spawn(self, frame: np.ndarray, mask: np.ndarray) -> None:
-        edge = np.clip(mask - cv2.erode(mask, np.ones((9, 9), np.uint8)), 0, 1)
-        candidates = np.argwhere(edge > 0.4)
+        core = (mask > PARTICLE_SPAWN_CORE).astype(np.float32)
+        edge = np.clip(core - cv2.erode(core, np.ones((9, 9), np.uint8)), 0, 1)
+        candidates = np.argwhere(edge > 0.5)
         if len(candidates) == 0:
             return
         picks = candidates[self.rng.integers(0, len(candidates), PARTICLES_PER_FRAME)]
@@ -125,6 +154,15 @@ class ParticleField:
         return np.clip(frame + overlay, 0, 1)
 
 
+def effect_is_pulsing(core_areas: deque[float]) -> bool:
+    if len(core_areas) < PULSE_WINDOW:
+        return False
+    peak = max(core_areas)
+    if peak <= 0:
+        return False
+    return (peak - min(core_areas)) / peak > PULSE_MIN_VARIATION
+
+
 def label(frame: np.ndarray, text: str) -> np.ndarray:
     out = (frame * 255).astype(np.uint8)
     cv2.putText(out, text, (12, 28), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 0), 4)
@@ -151,6 +189,8 @@ def process(input_path: Path, output_path: Path) -> None:
     shake_energy = 0.0
     frame_index = 0
     effect_frames = 0
+    starved_frames = 0
+    core_areas: deque[float] = deque(maxlen=PULSE_WINDOW)
 
     while True:
         ok, raw = capture.read()
@@ -160,24 +200,37 @@ def process(input_path: Path, output_path: Path) -> None:
         mask = effect_mask(frame)
         mask_ema = mask if mask_ema is None else mask_ema * MASK_EMA + mask * (1 - MASK_EMA)
         area = float(mask_ema.mean())
+        core_areas.append(float((mask_ema > PARTICLE_SPAWN_CORE).mean()))
 
         small = cv2.resize(cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY), None, fx=FLOW_SCALE, fy=FLOW_SCALE)
         flow = np.zeros((*small.shape, 2), dtype=np.float32)
         if prev_small is not None:
-            flow = cv2.calcOpticalFlowFarneback(prev_small, small, None, 0.5, 3, 15, 3, 5, 1.2, 0)
+            if float(np.abs(small - prev_small).mean()) > SCENE_CUT_DIFF:
+                particles.clear()
+                mask_ema = mask
+                shake_energy = 0.0
+                prev_area = float(mask.mean())
+                core_areas.clear()
+            else:
+                flow = cv2.calcOpticalFlowFarneback(prev_small, small, None, 0.5, 3, 15, 3, 5, 1.2, 0)
         prev_small = small
 
         if area < MASK_MIN_AREA:
+            starved_frames += 1
+            if starved_frames >= PARTICLE_STARVE_FRAMES:
+                particles.clear()
             out = frame
             particles.step(flow, (height, width))
             out = particles.render(out)
         else:
+            starved_frames = 0
             effect_frames += 1
             out = heat_distortion(frame, mask_ema, frame_index)
             out = regrade_effect(out, mask_ema)
             out = apply_bloom(out, mask_ema)
             out = light_wrap(out, mask_ema)
-            particles.spawn(frame, mask_ema)
+            if area >= PARTICLE_SPAWN_MIN_AREA and effect_is_pulsing(core_areas):
+                particles.spawn(frame, mask_ema)
             particles.step(flow, (height, width))
             out = particles.render(out)
 

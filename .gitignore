@@ -69,3 +69,6 @@ models/
 *.pt
 *.ckpt
 *.safetensors
+
+# migração pontual do catálogo (contém URLs/storage_keys)
+catalog-migration.sql

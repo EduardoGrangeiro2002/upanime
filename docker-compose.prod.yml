@@ -18,6 +18,12 @@ services:
     depends_on:
       - redis
     restart: unless-stopped
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.upanime.rule=Host(`anime.eduardograngeiro.com.br`)"
+      - "traefik.http.routers.upanime.entrypoints=websecure"
+      - "traefik.http.routers.upanime.tls.certresolver=letsencrypt"
+      - "traefik.http.services.upanime.loadbalancer.server.port=7891"
 
   redis:
     image: redis:7-alpine
@@ -25,21 +31,6 @@ services:
       - redis-data:/data
     restart: unless-stopped
 
-  caddy:
-    image: caddy:2-alpine
-    ports:
-      - "80:80"
-      - "443:443"
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    depends_on:
-      - app
-    restart: unless-stopped
-
 volumes:
   upanime-data:
   redis-data:
-  caddy-data:
-  caddy-config:

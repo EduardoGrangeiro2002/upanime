@@ -4,10 +4,10 @@ Depois de configurar uma vez, o deploy é automático: **`git push` na `main`** 
 
 ## Como o app é servido
 
-O backend Go serve **tanto a API quanto o front** (o build do React é embutido na imagem). Não há dois serviços nem CORS: o navegador fala só com um domínio, e o Caddy aplica HTTPS na borda.
+O backend Go serve **tanto a API quanto o front** (o build do React é embutido na imagem). Não há dois serviços nem CORS: o navegador fala só com um domínio, e o Traefik (proxy reverso já rodando no VPS) aplica HTTPS na borda e roteia para o app via labels no compose.
 
 ```
-Navegador → https://seu-dominio.com → Caddy (HTTPS) → app:7891 (Go serve front + API)
+Navegador → https://anime.eduardograngeiro.com.br → Traefik (HTTPS) → app:7891 (Go serve front + API)
                                                           │
                                                           ├── RunPod (upscale, via polling)
                                                           └── Cloudflare R2 (vídeos)
@@ -26,7 +26,7 @@ ssh root@SEU_IP_VPS
 curl -fsSL https://get.docker.com | sh
 ```
 
-Crie a pasta do app e coloque nela `docker-compose.prod.yml` e `Caddyfile` (copie do repo, ou `git clone`):
+Crie a pasta do app e coloque nela o `docker-compose.prod.yml` (copie do repo, ou `git clone`):
 
 ```bash
 mkdir -p /opt/upanime && cd /opt/upanime
@@ -52,7 +52,7 @@ nano .env
 
 ### 2. Apontar o domínio
 
-No painel do domínio, crie um registro **A** para o IP do VPS. Edite o `Caddyfile` trocando `seu-dominio.com` pelo domínio real. O Caddy emite o certificado HTTPS sozinho na primeira subida.
+No painel do domínio, crie um registro **A** para o IP do VPS. O domínio já está definido nas labels do Traefik no `docker-compose.prod.yml` (`anime.eduardograngeiro.com.br`); o Traefik emite o certificado HTTPS sozinho (Let's Encrypt) na primeira requisição. Requer o Traefik já rodando no VPS com o entrypoint `websecure` e o certresolver `letsencrypt`.
 
 ### 3. Primeira subida (manual, só desta vez)
 

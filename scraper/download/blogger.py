@@ -1,6 +1,5 @@
 import os
 import re
-import threading
 import httpx
 from browser import get_page
 
@@ -23,30 +22,20 @@ def _unescape_googlevideo_url(raw: str) -> str:
 
 
 def resolve_blogger_url(embed_url: str) -> str | None:
-    captured_url: list[str] = []
-    event = threading.Event()
-
     with get_page() as page:
-        def handle_response(response):
-            if "batchexecute" not in response.url:
-                return
-            try:
-                body = response.body().decode("utf-8")
-            except Exception:
-                return
-            match = _GOOGLEVIDEO_RE.search(body)
-            if not match:
-                return
-            captured_url.append(_unescape_googlevideo_url(match.group(1)))
-            event.set()
+        try:
+            with page.expect_response(
+                lambda r: "batchexecute" in r.url, timeout=15000
+            ) as response_info:
+                page.goto(embed_url, wait_until="domcontentloaded")
+            body = response_info.value.body().decode("utf-8", errors="replace")
+        except Exception:
+            return None
 
-        page.on("response", handle_response)
-        page.goto(embed_url, wait_until="domcontentloaded")
-        event.wait(timeout=15.0)
-
-    if not captured_url:
+    match = _GOOGLEVIDEO_RE.search(body)
+    if not match:
         return None
-    return captured_url[0]
+    return _unescape_googlevideo_url(match.group(1))
 
 
 def download_blogger(embed_url: str, dest_path: str, on_progress=None) -> bool:

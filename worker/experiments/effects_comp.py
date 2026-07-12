@@ -7,8 +7,10 @@ import cv2
 import numpy as np
 
 MASK_V_MIN = 0.78
-MASK_S_MIN = 0.45
+MASK_S_MIN = 0.6
 MASK_HOT_V = 0.93
+MASK_HOT_NEAR_SAT = 15
+MASK_OPEN_KERNEL = 7
 MASK_MIN_AREA = 0.004
 MASK_EMA = 0.55
 BLOOM_SIGMAS = (6, 18, 48)
@@ -31,7 +33,12 @@ SHAKE_DECAY = 0.8
 def effect_mask(frame: np.ndarray) -> np.ndarray:
     hsv = cv2.cvtColor(frame, cv2.COLOR_BGR2HSV)
     s, v = hsv[..., 1], hsv[..., 2]
-    raw = (((v > MASK_V_MIN) & (s > MASK_S_MIN)) | (v > MASK_HOT_V)).astype(np.float32)
+    saturated = ((v > MASK_V_MIN) & (s > MASK_S_MIN)).astype(np.float32)
+    near_saturated = cv2.dilate(saturated, np.ones((MASK_HOT_NEAR_SAT, MASK_HOT_NEAR_SAT), np.uint8))
+    hot = ((v > MASK_HOT_V).astype(np.float32)) * near_saturated
+    raw = np.clip(saturated + hot, 0, 1)
+    kernel = np.ones((MASK_OPEN_KERNEL, MASK_OPEN_KERNEL), np.uint8)
+    raw = cv2.morphologyEx(raw, cv2.MORPH_OPEN, kernel)
     raw = cv2.dilate(raw, np.ones((5, 5), np.uint8))
     return cv2.GaussianBlur(raw, (0, 0), 4)
 

@@ -21,6 +21,8 @@ class VideoPipeline(Protocol):
         sharpen: float | None = None,
         saturation: float | None = None,
         contrast: float | None = None,
+        interpolate: bool = False,
+        pan_residual_ratio: float | None = None,
     ) -> None: ...
 
 
@@ -37,12 +39,14 @@ class UpscaleJobRunner:
         callbacks: CallbackClient,
         temp_root: Path,
         request_timeout_seconds: int,
+        force_interpolate: bool = False,
     ) -> None:
         self._pipeline = pipeline
         self._storage = storage
         self._callbacks = callbacks
         self._temp_root = temp_root
         self._request_timeout_seconds = request_timeout_seconds
+        self._force_interpolate = force_interpolate
 
     def run(self, job: WorkerJobRequest) -> None:
         work_dir = self._temp_root / str(job.job_id)
@@ -60,6 +64,8 @@ class UpscaleJobRunner:
                 sharpen=job.sharpen,
                 saturation=job.saturation,
                 contrast=job.contrast,
+                interpolate=job.interpolate or self._force_interpolate,
+                pan_residual_ratio=job.pan_ratio,
             )
             self._storage.upload_file(output_path, job.result_storage_key)
             self._ensure_uploaded(job.result_storage_key)

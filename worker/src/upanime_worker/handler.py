@@ -23,6 +23,7 @@ def _build_runner() -> UpscaleJobRunner:
         target_height=settings.target_height,
         encode_preset=settings.encode_preset,
         enable_torch_compile=settings.enable_torch_compile,
+        rife_dir=settings.rife_dir,
     )
     storage = R2StorageClient(
         account_id=settings.r2_account_id,
@@ -38,6 +39,7 @@ def _build_runner() -> UpscaleJobRunner:
         callbacks=callbacks,
         temp_root=settings.temp_root,
         request_timeout_seconds=settings.request_timeout_seconds,
+        force_interpolate=settings.force_interpolate,
     )
 
 

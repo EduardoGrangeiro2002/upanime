@@ -16,6 +16,8 @@ export function EditionPage() {
   const [selectedAnimeId, setSelectedAnimeId] = useState<string | null>(null)
   const [selectedEpisodeIds, setSelectedEpisodeIds] = useState<Set<string>>(new Set())
   const [targetHeight, setTargetHeight] = useState<TargetHeight>(1080)
+  const [interpolate, setInterpolate] = useState(false)
+  const [panRatio, setPanRatio] = useState(0.6)
   const [encodeParams, setEncodeParams] = useState<EncodeParams>({ batchSize: 2, sharpen: 0.5, saturation: 1.20, contrast: 1.05 })
   const startUpscale = useStartUpscale()
 
@@ -40,6 +42,8 @@ export function EditionPage() {
         sharpen: encodeParams.sharpen,
         saturation: encodeParams.saturation,
         contrast: encodeParams.contrast,
+        interpolate,
+        ...(interpolate ? { panRatio } : {}),
       },
       {
         onSuccess: () => {
@@ -79,6 +83,10 @@ export function EditionPage() {
       <ProcessingConfig
         targetHeight={targetHeight}
         onChange={setTargetHeight}
+        interpolate={interpolate}
+        onInterpolateChange={setInterpolate}
+        panRatio={panRatio}
+        onPanRatioChange={setPanRatio}
         encodeParams={encodeParams}
         onEncodeParamsChange={setEncodeParams}
       />
@@ -88,7 +96,7 @@ export function EditionPage() {
       {selectedEpisodeIds.size > 0 && (
         <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 rounded-2xl glass border border-white/[0.08] px-4 py-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {selectedEpisodeIds.size} episódio{selectedEpisodeIds.size !== 1 ? "s" : ""} · {targetHeight}p
+            {selectedEpisodeIds.size} episódio{selectedEpisodeIds.size !== 1 ? "s" : ""} · {targetHeight}p{interpolate ? " · 60fps" : ""}
           </span>
           <Button
             variant="gradient"
@@ -339,11 +347,19 @@ export function AggressiveUpscaleWarning({
 function ProcessingConfig({
   targetHeight,
   onChange,
+  interpolate,
+  onInterpolateChange,
+  panRatio,
+  onPanRatioChange,
   encodeParams,
   onEncodeParamsChange,
 }: {
   targetHeight: TargetHeight
   onChange: (height: TargetHeight) => void
+  interpolate: boolean
+  onInterpolateChange: (value: boolean) => void
+  panRatio: number
+  onPanRatioChange: (value: number) => void
   encodeParams: EncodeParams
   onEncodeParamsChange: (params: EncodeParams) => void
 }) {
@@ -391,6 +407,37 @@ function ProcessingConfig({
               4K
             </Button>
           </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span
+              className="text-sm font-medium underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 cursor-help"
+              data-tooltip="Interpolação seletiva com RIFE: pans de câmera ganham frames até 60fps; cenas de ação, flashes e cortes preservam o timing original."
+              tabIndex={0}
+            >
+              Interpolação 60 FPS (RIFE seletivo)
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant={interpolate ? "default" : "outline"}
+              aria-pressed={interpolate}
+              onClick={() => onInterpolateChange(!interpolate)}
+            >
+              {interpolate ? "Ativada" : "Desativada"}
+            </Button>
+          </div>
+          {interpolate && (
+            <ParamSlider
+              label="Sensibilidade de pan"
+              tooltip="Quanto maior, mais movimentos de câmera são aceitos para interpolação (tolera mais parallax). Valores altos podem suavizar cenas que deviam ficar secas."
+              value={panRatio}
+              min={0.6}
+              max={0.9}
+              step={0.05}
+              onChange={onPanRatioChange}
+            />
+          )}
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           <PipelineInfo label="Modelo" value="Real-ESRGAN AnimeVideo v3" />

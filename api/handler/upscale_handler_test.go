@@ -95,10 +95,13 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 	editionHandler, animeStore, episodeStore, _, workerClient := setupEditionTest(t)
 	anime := createAnimeWithStorageKey(t, animeStore, episodeStore)
 
+	panRatio := 0.75
 	body, _ := json.Marshal(model.CreateUpscaleRequest{
 		AnimeID:      anime.ID,
 		EpisodeIDs:   []model.StringID{anime.Seasons[0].Episodes[0].ID},
 		TargetHeight: 2160,
+		Interpolate:  true,
+		PanRatio:     &panRatio,
 	})
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
@@ -136,6 +139,12 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 		}
 		if queuedJob.TargetHeight != 2160 {
 			t.Errorf("unexpected worker target height: %d", queuedJob.TargetHeight)
+		}
+		if !queuedJob.Interpolate {
+			t.Error("expected interpolate to reach the worker job")
+		}
+		if queuedJob.PanRatio == nil || *queuedJob.PanRatio != 0.75 {
+			t.Errorf("expected pan ratio 0.75 to reach the worker job, got %v", queuedJob.PanRatio)
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected job to be queued in worker client")

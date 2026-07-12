@@ -17,6 +17,8 @@ class WorkerJobRequest(BaseModel):
     sharpen: float | None = Field(default=None)
     saturation: float | None = Field(default=None)
     contrast: float | None = Field(default=None)
+    interpolate: bool = Field(default=False)
+    pan_ratio: float | None = Field(default=None, alias="panRatio")
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
     @field_validator("target_height")
@@ -25,6 +27,13 @@ class WorkerJobRequest(BaseModel):
         if value not in VALID_TARGET_HEIGHTS:
             raise ValueError(f"target_height must be one of {sorted(VALID_TARGET_HEIGHTS)}")
         return value
+
+    @field_validator("pan_ratio")
+    @classmethod
+    def clamp_pan_ratio(cls, value: float | None) -> float | None:
+        if value is None:
+            return None
+        return min(0.9, max(0.6, value))
 
 
 class WorkerCallbackPayload(BaseModel):

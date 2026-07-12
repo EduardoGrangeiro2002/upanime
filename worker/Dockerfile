@@ -6,6 +6,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     WORKER_TEMP_ROOT=/data/tmp \
     WORKER_MODEL_PATH=/data/models/realesr-animevideov3.pth \
     WORKER_HURRDEBLUR_MODEL_PATH=/data/models/1x-HurrDeblur-SuperUltraCompact.pth \
+    WORKER_RIFE_DIR=/data/models/Practical-RIFE \
     WORKER_TARGET_HEIGHT=1080 \
     WORKER_ENCODE_PRESET=medium \
     WORKER_REQUEST_TIMEOUT_SECONDS=1800 \
@@ -14,6 +15,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ffmpeg \
+    unzip \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app/worker
@@ -28,5 +30,13 @@ RUN mkdir -p /data/tmp /data/models \
        https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth \
     && curl -fSL -o /data/models/1x-HurrDeblur-SuperUltraCompact.pth \
        https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth
+
+RUN git clone --depth 1 https://github.com/hzwer/Practical-RIFE.git /data/models/Practical-RIFE \
+    && pip install --no-cache-dir gdown \
+    && gdown 1ZKjcbmt1hypiFprJPIKW0Tt0lr_2i7bg -O /tmp/rife_v4.25.zip \
+    && unzip -o -q /tmp/rife_v4.25.zip -d /data/models/Practical-RIFE \
+    && rm -f /tmp/rife_v4.25.zip \
+    && rm -rf /data/models/Practical-RIFE/train_log/__MACOSX \
+    && touch /data/models/Practical-RIFE/train_log/__init__.py
 
 ENTRYPOINT ["python", "-m", "upanime_worker.handler"]

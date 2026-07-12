@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 import json
 import logging
 import math
@@ -14,10 +15,23 @@ from pathlib import Path
 
 import requests
 
+from .interpolation import (
+    PAN_RESIDUAL_RATIO,
+    FrameDeduper,
+    InterpolateFrame,
+    classify_gaps,
+    collapse_plan,
+    detect_scene_cuts,
+    plan_output_frames,
+)
+
 MODEL_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
 HURRDEBLUR_URL = "https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth"
 MODEL_SCALE = 4
 BATCH_SIZE = 2
+TARGET_FPS = 60.0
+RIFE_PAD_MULTIPLE = 64
+CLASSIFY_GRAY_WIDTH = 320
 SHARPEN_GPU_AMOUNT = 0.5
 SHARPEN_GPU_KERNEL_SIZE = 3
 SHARPEN_GPU_SIGMA = 1.0
@@ -68,14 +82,18 @@ class QualityUpscalePipeline:
         target_height: int,
         encode_preset: str,
         enable_torch_compile: bool,
+        rife_dir: Path | None = None,
     ) -> None:
         self._model_path = model_path
         self._hurrdeblur_model_path = hurrdeblur_model_path
         self._target_height = target_height
         self._encode_preset = encode_preset
         self._enable_torch_compile = enable_torch_compile
+        self._rife_dir = rife_dir
         self._runtime: PipelineRuntime | None = None
         self._runtime_lock = threading.Lock()
+        self._rife_model: object | None = None
+        self._rife_lock = threading.Lock()
 
     def process(
         self,
@@ -86,6 +104,8 @@ class QualityUpscalePipeline:
         sharpen: float | None = None,
         saturation: float | None = None,
         contrast: float | None = None,
+        interpolate: bool = False,
+        pan_residual_ratio: float | None = None,
     ) -> None:
         encode_params = EncodeParams(
             sharpen=max(0.0, min(2.0, sharpen)) if sharpen is not None else SHARPEN_GPU_AMOUNT,
@@ -94,12 +114,16 @@ class QualityUpscalePipeline:
         )
         effective_height = target_height or self._target_height
         effective_batch = max(1, min(16, batch_size)) if batch_size is not None else BATCH_SIZE
+        effective_pan_ratio = pan_residual_ratio if pan_residual_ratio is not None else PAN_RESIDUAL_RATIO
         logging.info(
-            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f",
-            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast,
+            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f interpolate=%s pan_ratio=%.2f",
+            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast, interpolate, effective_pan_ratio,
         )
         metadata = self._probe_video(input_path, effective_height)
         runtime = self._load_runtime()
+        if interpolate:
+            self._run_chain(input_path, output_path, metadata, runtime, encode_params, effective_batch, effective_pan_ratio)
+            return
         self._run_stream(input_path, output_path, metadata, runtime, encode_params, effective_batch)
 
     def _load_runtime(self) -> PipelineRuntime:
@@ -376,6 +400,214 @@ class QualityUpscalePipeline:
         for frame in frames:
             encode_queue.put(frame)
 
+    def _load_rife(self, runtime: PipelineRuntime) -> object:
+        with self._rife_lock:
+            if self._rife_model is not None:
+                return self._rife_model
+
+            if self._rife_dir is None:
+                raise RuntimeError("interpolate requested but WORKER_RIFE_DIR is not configured")
+
+            train_log = self._rife_dir / "train_log"
+            model_py = train_log / "RIFE_HDv3.py"
+            if not model_py.exists() or not (train_log / "flownet.pkl").exists():
+                raise RuntimeError(f"RIFE model files not found in {train_log}")
+
+            rife_root = str(self._rife_dir)
+            if rife_root not in sys.path:
+                sys.path.insert(0, rife_root)
+
+            spec = importlib.util.spec_from_file_location("RIFE_HDv3", str(model_py))
+            module = importlib.util.module_from_spec(spec)
+            spec.loader.exec_module(module)
+
+            model = module.Model()
+            if not hasattr(model, "version"):
+                model.version = 0
+            model.load_model(str(train_log), -1)
+            model.eval()
+            model.device()
+            self._rife_model = model
+            return model
+
+    def _to_rife_tensor(self, frame: object, runtime: PipelineRuntime) -> object:
+        rgb = runtime.cv2.cvtColor(frame, runtime.cv2.COLOR_BGR2RGB)
+        tensor = (
+            runtime.torch.from_numpy(rgb.copy())
+            .permute(2, 0, 1)
+            .float()
+            .div(255.0)
+            .unsqueeze(0)
+            .to(runtime.device)
+        )
+        _, _, height, width = tensor.shape
+        pad_h = (RIFE_PAD_MULTIPLE - height % RIFE_PAD_MULTIPLE) % RIFE_PAD_MULTIPLE
+        pad_w = (RIFE_PAD_MULTIPLE - width % RIFE_PAD_MULTIPLE) % RIFE_PAD_MULTIPLE
+        if pad_h > 0 or pad_w > 0:
+            tensor = runtime.torch.nn.functional.pad(tensor, (0, pad_w, 0, pad_h), mode="reflect")
+        return tensor
+
+    def _from_rife_tensor(self, tensor: object, runtime: PipelineRuntime, metadata: VideoMetadata) -> object:
+        tensor = tensor[:, :, : metadata.height, : metadata.width]
+        frame = tensor.squeeze(0).mul(255.0).clamp_(0, 255).byte().permute(1, 2, 0).cpu().numpy()
+        return runtime.cv2.cvtColor(frame, runtime.cv2.COLOR_RGB2BGR)
+
+    def _decode_unique_frames(
+        self, input_path: Path, metadata: VideoMetadata, runtime: PipelineRuntime
+    ) -> tuple[list[object], list[int], list[object], int]:
+        np = runtime.numpy
+        cv2 = runtime.cv2
+        frame_bytes = metadata.width * metadata.height * 3
+        small_height = max(2, int(round(metadata.height * CLASSIFY_GRAY_WIDTH / metadata.width)))
+
+        decode_proc = subprocess.Popen(
+            self._build_decode_command(input_path),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=frame_bytes * 4,
+        )
+
+        deduper = FrameDeduper()
+        unique_frames: list[object] = []
+        unique_indices: list[int] = []
+        small_grays: list[object] = []
+        total_decoded = 0
+
+        try:
+            while True:
+                payload = self._read_exact(decode_proc.stdout, frame_bytes)
+                if payload is None:
+                    break
+                frame = np.frombuffer(payload, dtype=np.uint8).reshape(
+                    metadata.height, metadata.width, 3
+                ).copy()
+                gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY).astype(np.float32) / 255.0
+                if deduper.is_unique(gray):
+                    unique_frames.append(frame)
+                    unique_indices.append(total_decoded)
+                    small_grays.append(cv2.resize(gray, (CLASSIFY_GRAY_WIDTH, small_height)))
+                total_decoded += 1
+        finally:
+            decode_proc.stdout.close()
+
+        stderr = decode_proc.stderr.read().decode("utf-8", errors="replace")
+        if decode_proc.wait() != 0:
+            raise RuntimeError(stderr)
+        if not unique_frames:
+            raise RuntimeError("no frames decoded from source video")
+
+        return unique_frames, unique_indices, small_grays, total_decoded
+
+    def _run_chain(
+        self,
+        input_path: Path,
+        output_path: Path,
+        metadata: VideoMetadata,
+        runtime: PipelineRuntime,
+        encode_params: EncodeParams,
+        batch_size: int,
+        pan_residual_ratio: float = PAN_RESIDUAL_RATIO,
+    ) -> None:
+        rife = self._load_rife(runtime)
+
+        started = time.time()
+        unique_frames, unique_indices, small_grays, total_decoded = self._decode_unique_frames(
+            input_path, metadata, runtime
+        )
+        logging.info(
+            "chain pass 1: %d frames -> %d unique in %.1fs",
+            total_decoded, len(unique_frames), time.time() - started,
+        )
+
+        total_duration = total_decoded / metadata.fps
+        unique_timestamps = [index / metadata.fps for index in unique_indices]
+        is_scene_cut = detect_scene_cuts(small_grays)
+        allow = classify_gaps(small_grays, is_scene_cut, pan_residual_ratio)
+        plan = plan_output_frames(unique_timestamps, total_duration, TARGET_FPS, allow)
+        interp_count = sum(1 for op in plan if isinstance(op, InterpolateFrame))
+        logging.info(
+            "chain plan: %d output frames, %d interpolated (%.1f%%), %d/%d gaps approved for interpolation",
+            len(plan), interp_count, 100.0 * interp_count / max(len(plan), 1), sum(allow), max(len(allow), 1),
+        )
+        collapsed = collapse_plan(plan)
+
+        encode_proc = subprocess.Popen(
+            self._build_encode_command(
+                input_path, output_path, metadata, encode_params, fps_override=TARGET_FPS
+            ),
+            stdin=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            bufsize=metadata.width * metadata.height * 3 * 4,
+        )
+        encode_queue: queue.Queue[object] = queue.Queue(maxsize=ENCODE_QUEUE_SIZE)
+        sentinel = object()
+        encoder_state: dict[str, object] = {}
+        encoder = threading.Thread(
+            target=self._encoder_worker,
+            args=(encode_proc, encode_queue, sentinel, encoder_state, runtime),
+            daemon=True,
+        )
+        encoder.start()
+
+        runtime.torch.cuda.empty_cache()
+        started_pass2 = time.time()
+        handled = 0
+        pending: list[tuple[object, int]] = []
+        cached_left_index = -1
+        cached_left = None
+        cached_right_index = -1
+        cached_right = None
+
+        for op, count in collapsed:
+            if isinstance(op, InterpolateFrame):
+                if cached_left_index != op.left_index:
+                    cached_left = self._to_rife_tensor(unique_frames[op.left_index], runtime)
+                    cached_left_index = op.left_index
+                if cached_right_index != op.left_index + 1:
+                    cached_right = self._to_rife_tensor(unique_frames[op.left_index + 1], runtime)
+                    cached_right_index = op.left_index + 1
+                with runtime.torch.inference_mode():
+                    mid = rife.inference(cached_left, cached_right, timestep=op.timestep)
+                frame = self._from_rife_tensor(mid, runtime, metadata)
+            else:
+                frame = unique_frames[op.index]
+
+            pending.append((frame, count))
+            handled += count
+            if len(pending) < batch_size:
+                continue
+
+            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params)
+            pending = []
+            self._log_progress(handled, len(plan), started_pass2)
+
+        if pending:
+            self._write_batch_counted(encode_queue, pending, runtime, metadata, encode_params)
+
+        encode_queue.put(sentinel)
+        encoder.join()
+
+        self._raise_worker_errors({}, encoder_state)
+        logging.info(
+            "chain pipeline finished in %.1fs (%d in -> %d out frames)",
+            time.time() - started,
+            total_decoded,
+            handled,
+        )
+
+    def _write_batch_counted(
+        self,
+        encode_queue: queue.Queue[object],
+        pending: list[tuple[object, int]],
+        runtime: PipelineRuntime,
+        metadata: VideoMetadata,
+        encode_params: EncodeParams | None = None,
+    ) -> None:
+        frames = self._upscale_batch([frame for frame, _ in pending], runtime, metadata, encode_params)
+        for frame, (_, count) in zip(frames, pending):
+            for _ in range(count):
+                encode_queue.put(frame)
+
     def _decoder_worker(
         self,
         decode_proc: subprocess.Popen[bytes],
@@ -553,6 +785,7 @@ class QualityUpscalePipeline:
         output_path: Path,
         metadata: VideoMetadata,
         encode_params: EncodeParams | None = None,
+        fps_override: float | None = None,
     ) -> list[str]:
         params = encode_params or EncodeParams(saturation=SATURATION, contrast=CONTRAST)
         encode_vf = (
@@ -571,7 +804,7 @@ class QualityUpscalePipeline:
             "-s",
             f"{metadata.target_width}x{metadata.target_height}",
             "-r",
-            f"{metadata.fps:.6f}",
+            f"{fps_override or metadata.fps:.6f}",
             "-i",
             "-",
             "-i",

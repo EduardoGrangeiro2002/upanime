@@ -23,6 +23,22 @@ describe("Upscale Page", () => {
     expect(screen.getByRole("slider", { name: "Contraste" })).toBeInTheDocument()
   })
 
+  it("toggles selective RIFE interpolation and reveals the pan slider", async () => {
+    const user = userEvent.setup()
+    await openUpscalePage(user)
+
+    expect(screen.queryByRole("slider", { name: "Sensibilidade de pan" })).not.toBeInTheDocument()
+
+    const toggle = screen.getByRole("button", { name: "Desativada" })
+    expect(toggle).toHaveAttribute("aria-pressed", "false")
+
+    await user.click(toggle)
+
+    const enabled = screen.getByRole("button", { name: "Ativada" })
+    expect(enabled).toHaveAttribute("aria-pressed", "true")
+    expect(screen.getByRole("slider", { name: "Sensibilidade de pan" })).toBeInTheDocument()
+  })
+
   it("shows the action bar only after selecting episodes and starts the job", async () => {
     const user = userEvent.setup()
     await openUpscalePage(user)

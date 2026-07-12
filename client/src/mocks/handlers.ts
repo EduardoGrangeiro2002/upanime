@@ -214,6 +214,23 @@ export const handlers = [
     return HttpResponse.json({ url: `https://cdn.example.com/${storageKey}` })
   }),
 
+  http.post("/api/catalog/anime/:id/organize", async ({ params }) => {
+    await delay(100)
+    const anime = catalogAnimes.find((item) => item.id === String(params.id))
+    if (!anime) {
+      return new HttpResponse(null, { status: 404 })
+    }
+
+    for (const season of anime.seasons) {
+      for (const episode of season.episodes) {
+        const match = episode.title.match(/Epis[oó]dio\s*(\d+)/i)
+        if (match) episode.number = String(parseInt(match[1], 10))
+      }
+      season.episodes.sort((a, b) => Number(a.number) - Number(b.number))
+    }
+    return HttpResponse.json(anime)
+  }),
+
   http.delete("/api/catalog/episode/:id", async ({ params }) => {
     await delay(50)
     const found = findCatalogEpisode(String(params.id))

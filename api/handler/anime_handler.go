@@ -16,14 +16,15 @@ import (
 )
 
 type AnimeHandler struct {
-	animes   store.AnimeStore
-	scrapers store.ScraperStore
-	executor scraper.Executor
-	storage  storage.FileStorage
+	animes    store.AnimeStore
+	scrapers  store.ScraperStore
+	executor  scraper.Executor
+	storage   storage.FileStorage
+	organizer *service.EpisodeOrganizer
 }
 
-func NewAnimeHandler(animes store.AnimeStore, scrapers store.ScraperStore, executor scraper.Executor, fs storage.FileStorage) *AnimeHandler {
-	return &AnimeHandler{animes: animes, scrapers: scrapers, executor: executor, storage: fs}
+func NewAnimeHandler(animes store.AnimeStore, scrapers store.ScraperStore, executor scraper.Executor, fs storage.FileStorage, organizer *service.EpisodeOrganizer) *AnimeHandler {
+	return &AnimeHandler{animes: animes, scrapers: scrapers, executor: executor, storage: fs, organizer: organizer}
 }
 
 func (h *AnimeHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -57,6 +58,12 @@ func (h *AnimeHandler) Get(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		http.Error(w, `{"error":"scrape failed: `+err.Error()+`"}`, http.StatusInternalServerError)
 		return
+	}
+
+	if h.organizer.Enabled() {
+		if _, err := h.organizer.OrganizeAnime(r.Context(), anime); err != nil {
+			log.Printf("episode organize failed for %s: %v", rawURL, err)
+		}
 	}
 
 	anime.ScraperID = sc.ID

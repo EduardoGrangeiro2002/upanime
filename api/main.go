@@ -67,8 +67,9 @@ func main() {
 	exec := scraper.NewPythonExecutor(cfg.ScraperDir)
 
 	classifier := service.NewGenreClassifier(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "", animeStore)
+	organizer := service.NewEpisodeOrganizer(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "")
 
-	animeHandler := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs)
+	animeHandler := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, organizer)
 	downloadHandler := handler.NewDownloadHandler(downloadStore, animeStore, episodeStore, exec, fs, classifier, cfg.DatabasePath, cfg.MaxDownloads)
 	catalogHandler := handler.NewCatalogHandler(animeStore, episodeStore, fs)
 	uploadHandler := handler.NewUploadHandler(animeStore, episodeStore, scraperStore, fs, classifier)
@@ -144,6 +145,7 @@ func main() {
 		pr.Get("/api/catalog", catalogHandler.List)
 		pr.Post("/api/catalog/upload", uploadHandler.Create)
 		pr.Post("/api/catalog/classify", handler.ClassifyAllHandler(classifier))
+		pr.Post("/api/catalog/anime/{id}/organize", handler.OrganizeAnimeHandler(organizer, animeStore))
 		pr.Delete("/api/catalog/anime/{id}", catalogHandler.DeleteAnime)
 		pr.Post("/api/catalog/anime/{id}/cover", catalogHandler.UploadCover)
 		pr.Delete("/api/catalog/episode/{id}", catalogHandler.DeleteEpisode)

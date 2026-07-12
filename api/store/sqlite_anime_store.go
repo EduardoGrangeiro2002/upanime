@@ -187,6 +187,17 @@ func (s *SQLiteAnimeStore) UpdateGenres(ctx context.Context, id int64, genres []
 	return nil
 }
 
+func (s *SQLiteAnimeStore) UpdateEpisodeNumber(ctx context.Context, episodeID int64, number string) error {
+	_, err := s.db.ExecContext(ctx,
+		"UPDATE episodes SET number = ? WHERE id = ?",
+		number, episodeID,
+	)
+	if err != nil {
+		return fmt.Errorf("update episode number: %w", err)
+	}
+	return nil
+}
+
 func (s *SQLiteAnimeStore) AddEpisode(ctx context.Context, animeID int64, seasonNumber int, ep *model.Episode) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {
@@ -279,7 +290,7 @@ func genresFromJSON(raw string) []string {
 
 func (s *SQLiteAnimeStore) loadEpisodes(ctx context.Context, seasonID int64, seasonNumber int) ([]model.Episode, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, season_id, anime_id, title, number, url, type, storage_key, upscaled_storage_key FROM episodes WHERE season_id = ? ORDER BY number",
+		"SELECT id, season_id, anime_id, title, number, url, type, storage_key, upscaled_storage_key FROM episodes WHERE season_id = ? ORDER BY CAST(number AS INTEGER), number",
 		seasonID,
 	)
 	if err != nil {

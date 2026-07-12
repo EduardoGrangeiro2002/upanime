@@ -9,6 +9,7 @@ import (
 
 	"upanime/api/handler"
 	"upanime/api/model"
+	"upanime/api/service"
 	"upanime/api/storage"
 	"upanime/api/store"
 	"upanime/api/testutil"
@@ -47,7 +48,7 @@ func TestAnimeHandler_Get_Scrapes(t *testing.T) {
 		},
 	}
 
-	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs)
+	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, service.NewEpisodeOrganizer("", "", ""))
 
 	req := httptest.NewRequest("GET", "/api/anime?url=https://animesonlinecc.to/anime/naruto", nil)
 	w := httptest.NewRecorder()
@@ -82,7 +83,7 @@ func TestAnimeHandler_Get_ReturnsCached(t *testing.T) {
 	_ = animeStore.Create(context.Background(), anime)
 
 	exec := &fakeExecutor{}
-	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs)
+	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, service.NewEpisodeOrganizer("", "", ""))
 
 	req := httptest.NewRequest("GET", "/api/anime?url=https://animesonlinecc.to/anime/cached", nil)
 	w := httptest.NewRecorder()
@@ -101,7 +102,7 @@ func TestAnimeHandler_Get_ReturnsCached(t *testing.T) {
 }
 
 func TestAnimeHandler_Get_MissingURL(t *testing.T) {
-	h := handler.NewAnimeHandler(nil, nil, nil, nil)
+	h := handler.NewAnimeHandler(nil, nil, nil, nil, service.NewEpisodeOrganizer("", "", ""))
 
 	req := httptest.NewRequest("GET", "/api/anime", nil)
 	w := httptest.NewRecorder()

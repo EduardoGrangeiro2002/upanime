@@ -2,9 +2,9 @@ import { useRef, useState } from "react"
 import type { Anime, Season } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { X, Trash2, ImagePlus, Loader2 } from "lucide-react"
+import { X, Trash2, ImagePlus, Loader2, Sparkles } from "lucide-react"
 import { CatalogEpisodeList } from "./catalog-episode-list"
-import { useUploadCover } from "@/hooks/use-catalog"
+import { useOrganizeAnime, useUploadCover } from "@/hooks/use-catalog"
 import { useDialog } from "@/hooks/use-dialog"
 
 interface CatalogDetailProps {
@@ -51,6 +51,7 @@ export function CatalogDetail({
   const downloaded = countDownloaded(anime)
   const fileRef = useRef<HTMLInputElement>(null)
   const uploadCover = useUploadCover()
+  const organizeMutation = useOrganizeAnime()
   const dialogRef = useDialog(onClose)
 
   const currentSeason = availableSeasons.find((s) => s.number === activeSeason) ?? availableSeasons[0]
@@ -96,6 +97,21 @@ export function CatalogDetail({
           <div className="absolute inset-0 bg-gradient-to-t from-surface via-surface/40 to-transparent" />
 
           <div className="absolute top-3 right-3 z-20 flex items-center gap-2">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label="Organizar episódios com IA"
+              data-tooltip="Organizar episódios (IA)"
+              className="h-9 w-9 rounded-full glass text-white hover:bg-white/10"
+              onClick={() => organizeMutation.mutate(anime.id)}
+              disabled={organizeMutation.isPending}
+            >
+              {organizeMutation.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
+              ) : (
+                <Sparkles className="h-4 w-4" aria-hidden="true" />
+              )}
+            </Button>
             <Button
               variant="ghost"
               size="icon"

@@ -82,6 +82,10 @@ export function deleteAnime(id: string): Promise<void> {
   return apiFetch<void>(`/catalog/anime/${id}`, { method: "DELETE" })
 }
 
+export function organizeAnime(id: string): Promise<Anime> {
+  return apiFetch<Anime>(`/catalog/anime/${id}/organize`, { method: "POST" })
+}
+
 export function deleteEpisode(id: string): Promise<void> {
   return apiFetch<void>(`/catalog/episode/${id}`, { method: "DELETE" })
 }

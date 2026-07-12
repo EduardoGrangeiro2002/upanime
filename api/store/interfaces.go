@@ -24,6 +24,7 @@ type AnimeStore interface {
 	UpdateCoverPath(ctx context.Context, id int64, path string) error
 	UpdateGenres(ctx context.Context, id int64, genres []string) error
 	AddEpisode(ctx context.Context, animeID int64, seasonNumber int, ep *model.Episode) error
+	UpdateEpisodeNumber(ctx context.Context, episodeID int64, number string) error
 }
 
 type DownloadStore interface {

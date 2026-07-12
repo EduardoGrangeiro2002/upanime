@@ -186,58 +186,65 @@ func (c *GenreClassifier) Classify(ctx context.Context, title, description strin
 	system := fmt.Sprintf(classifierSystemPrompt, string(taxonomy))
 	prompt := fmt.Sprintf("Título: %s\nDescrição: %s", title, description)
 
-	body, err := json.Marshal(chatCompletionRequest{
-		Model: c.model,
-		Messages: []chatMessage{
-			{Role: "system", Content: system},
-			{Role: "user", Content: prompt},
-		},
-		MaxTokens: 256,
-	})
+	text, err := chatComplete(ctx, c.client, c.baseURL, c.apiKey, c.model, system, prompt, 256)
 	if err != nil {
-		return nil, fmt.Errorf("encode request: %w", err)
+		return nil, err
 	}
 
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, c.baseURL+"/chat/completions", bytes.NewReader(body))
-	if err != nil {
-		return nil, fmt.Errorf("build request: %w", err)
-	}
-	req.Header.Set("Authorization", "Bearer "+c.apiKey)
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Title", "upanime")
-
-	resp, err := c.client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("classify request: %w", err)
-	}
-	defer resp.Body.Close()
-
-	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
-	if err != nil {
-		return nil, fmt.Errorf("read response: %w", err)
-	}
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("openrouter status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
-	}
-
-	var parsed chatCompletionResponse
-	if err := json.Unmarshal(raw, &parsed); err != nil {
-		return nil, fmt.Errorf("decode response: %w", err)
-	}
-	if parsed.Error != nil {
-		return nil, fmt.Errorf("openrouter error: %s", parsed.Error.Message)
-	}
-	if len(parsed.Choices) == 0 {
-		return nil, fmt.Errorf("empty choices in response")
-	}
-
-	text := parsed.Choices[0].Message.Content
 	genres, err := parseGenres(text)
 	if err != nil {
 		return nil, fmt.Errorf("parse response %q: %w", text, err)
 	}
 	return genres, nil
+}
+
+func chatComplete(ctx context.Context, client *http.Client, baseURL, apiKey, model, system, prompt string, maxTokens int) (string, error) {
+	body, err := json.Marshal(chatCompletionRequest{
+		Model: model,
+		Messages: []chatMessage{
+			{Role: "system", Content: system},
+			{Role: "user", Content: prompt},
+		},
+		MaxTokens: maxTokens,
+	})
+	if err != nil {
+		return "", fmt.Errorf("encode request: %w", err)
+	}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, baseURL+"/chat/completions", bytes.NewReader(body))
+	if err != nil {
+		return "", fmt.Errorf("build request: %w", err)
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Title", "upanime")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", fmt.Errorf("chat request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+	if err != nil {
+		return "", fmt.Errorf("read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("openrouter status %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+	}
+
+	var parsed chatCompletionResponse
+	if err := json.Unmarshal(raw, &parsed); err != nil {
+		return "", fmt.Errorf("decode response: %w", err)
+	}
+	if parsed.Error != nil {
+		return "", fmt.Errorf("openrouter error: %s", parsed.Error.Message)
+	}
+	if len(parsed.Choices) == 0 {
+		return "", fmt.Errorf("empty choices in response")
+	}
+	return parsed.Choices[0].Message.Content, nil
 }
 
 func parseGenres(text string) ([]string, error) {

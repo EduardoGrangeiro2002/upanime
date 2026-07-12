@@ -1,6 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
-import { fetchCatalog, deleteAnime, deleteEpisode, deleteUpscaledEpisode, fetchEpisodeStreamURL, uploadAnimeCover } from "@/api/endpoints"
+import { fetchCatalog, deleteAnime, deleteEpisode, deleteUpscaledEpisode, fetchEpisodeStreamURL, organizeAnime, uploadAnimeCover } from "@/api/endpoints"
 import type { Anime, EpisodeStreamVariant } from "@/api/types"
 
 function clearUpscaledStorageKey(animes: Anime[] | undefined, episodeId: string): Anime[] {
@@ -58,6 +58,18 @@ export function useDeleteUpscaledEpisode() {
       queryClient.setQueryData<Anime[]>(["catalog"], (animes) => clearUpscaledStorageKey(animes, episodeId))
       queryClient.invalidateQueries({ queryKey: ["catalog"] })
       toast.success("Versão upscale removida")
+    },
+  })
+}
+
+export function useOrganizeAnime() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: organizeAnime,
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["catalog"] })
+      toast.success("Episódios organizados")
     },
   })
 }

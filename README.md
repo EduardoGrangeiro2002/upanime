@@ -1,6 +1,6 @@
 # UpAnime
 
-Biblioteca de anime self-hosted com upscale por IA. Baixa episódios, organiza um catálogo com streaming próprio e reprocessa vídeo em GPU serverless — Real-ESRGAN AnimeVideo v3 pra super-resolução, HurrDeblur pra detalhe de line art e RIFE pra interpolação até 60fps.
+Biblioteca de anime self-hosted com upscale por IA. Baixa episódios, organiza um catálogo com streaming próprio e reprocessa vídeo em GPU serverless — Real-ESRGAN AnimeVideo v3 pra super-resolução e HurrDeblur pra detalhe de line art.
 
 ![Comparar vídeos — original vs. upscale lado a lado](docs/comparar-videos.png)
 
@@ -11,7 +11,6 @@ Biblioteca de anime self-hosted com upscale por IA. Baixa episódios, organiza u
 - **Downloads** — busca animes, resolve embeds e baixa episódios direto pra sua biblioteca
 - **Catálogo** — streaming com player próprio, progresso de reprodução, capas e gêneros classificados por IA
 - **Upscale** — pipeline GPU no RunPod Serverless: deinterlace → denoise → Real-ESRGAN 4x → sharpen → HurrDeblur, com saída em 1080p/1440p/2160p
-- **60 FPS opcional** — dedup timestamp-aware + interpolação RIFE com timestep exato, sem borrar cortes de cena
 - **Comparação** — original vs. upscaled lado a lado
 - **Upload manual** — adicione episódios que você já tem
 - **Acesso por convite** — sem registro público: admin criado por script, convites por email, MFA por email
@@ -104,21 +103,38 @@ cd worker
 ./deploy.sh --patch   # build linux/amd64 + push, com bump de versão
 ```
 
-O build baixa os pesos dos modelos (Real-ESRGAN AnimeVideo v3, HurrDeblur e RIFE v4.25) pra dentro da imagem — a primeira publicação demora.
+O build baixa os pesos dos modelos (Real-ESRGAN AnimeVideo v3 e HurrDeblur) pra dentro da imagem — a primeira publicação demora.
 
 **2. Crie o endpoint** em RunPod → Serverless → New Endpoint:
 
-- **Container image**: `seu-usuario/upanime-worker:latest`
+- **Container image**: `seu-usuario/upanime-worker:1.12.0` — use a tag de versão que o `deploy.sh` imprimiu (está em `worker/version.json`), **nunca `latest`**
 - **GPU**: 16 GB+ de VRAM recomendado (24 GB pra saída em 4K com folga)
-- **Environment variables**: copie de `worker/docker.env.example` — as credenciais R2 são obrigatórias; `WORKER_TEMPORAL_SMOOTH=0` desliga a suavização anti-flicker se quiser comparar
+- **Environment variables**: copie de `worker/docker.env.example` — as credenciais R2 são obrigatórias
 
 **3. Conecte o app**: preencha `RUNPOD_ENDPOINT_ID` e `RUNPOD_API_KEY` no `.env` e reinicie (`docker compose up -d`).
 
 O app enfileira jobs no endpoint e acompanha o status por polling — nenhuma porta de entrada é necessária no seu servidor.
 
+### Atualizando o worker
+
+**1. Publique a nova versão:**
+
+```bash
+cd worker
+./deploy.sh --patch   # ou --minor / --major
+```
+
+O script builda, publica a tag nova no registry e grava a versão em `worker/version.json`.
+
+**2. Aponte o endpoint pra tag nova**: em RunPod → Serverless → seu endpoint → **Edit Endpoint**, troque a **Container image** pra versão recém-publicada (ex. `seu-usuario/upanime-worker:1.12.0`) e salve. Workers novos já sobem com a imagem nova; jobs em andamento terminam na antiga.
+
+O primeiro job após a troca tem cold start mais lento — a imagem nova (PyTorch + pesos dos modelos) precisa ser baixada pelos hosts.
+
+> **Por que nunca `latest`:** o RunPod só re-baixa a imagem quando o *valor* do campo muda. Com o endpoint em `latest`, publicar uma `latest` nova **não** atualiza o worker — o sintoma é a feature nova "não funcionar" silenciosamente em produção, com o job completando pela imagem velha. Tag versionada torna a atualização explícita e permite rollback trocando o campo de volta.
+
 ### Desempenho e custo
 
-Referência real: um episódio de ~23 minutos (33.685 frames) no pipeline padrão (Real-ESRGAN + HurrDeblur, sem RIFE), medido em produção numa **RTX 5090 32 GB**:
+Referência real: um episódio de ~23 minutos (33.685 frames) no pipeline (Real-ESRGAN + HurrDeblur), medido em produção numa **RTX 5090 32 GB**:
 
 | Resolução de saída | Throughput (medido) | Tempo por episódio (~23 min) | Custo por episódio¹ |
 |---|---|---|---|
@@ -128,7 +144,7 @@ Referência real: um episódio de ~23 minutos (33.685 frames) no pipeline padrã
 
 ¹ Com o *flex worker* de RTX 5090 do RunPod Serverless a US$ 1,58/h (julho/2026) — confira os valores atuais em [runpod.io/pricing](https://www.runpod.io/pricing). Uma RTX 4090 (US$ 1,10/h) rende na faixa de ~30% menos throughput, com custo por episódio parecido — a 5090 entrega mais rápido pelo mesmo preço.
 
-A interpolação RIFE 60fps é opcional e consideravelmente mais lenta que o pipeline padrão; o throughput aparece em tempo real nos logs do worker (`processed N/M frames at X fps`).
+O throughput aparece em tempo real nos logs do worker (`processed N/M frames at X fps`).
 
 ## Email (SMTP)
 

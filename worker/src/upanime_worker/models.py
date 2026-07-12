@@ -17,7 +17,6 @@ class WorkerJobRequest(BaseModel):
     sharpen: float | None = Field(default=None)
     saturation: float | None = Field(default=None)
     contrast: float | None = Field(default=None)
-    interpolate: bool = Field(default=False)
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
     @field_validator("target_height")

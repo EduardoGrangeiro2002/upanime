@@ -126,5 +126,4 @@ export interface UpscaleRequest {
   sharpen?: number
   saturation?: number
   contrast?: number
-  interpolate?: boolean
 }

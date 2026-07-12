@@ -90,7 +90,6 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Sharpen:          req.Sharpen,
 			Saturation:       req.Saturation,
 			Contrast:         req.Contrast,
-			Interpolate:      req.Interpolate,
 			SourceStorageKey: episode.StorageKey,
 			ResultStorageKey: buildUpscaledKey(episode.StorageKey),
 			AnimeTitle:       anime.Title,
@@ -132,7 +131,6 @@ func (h *EditionHandler) dispatchJob(job model.UpscaleJob) {
 		Sharpen:          job.Sharpen,
 		Saturation:       job.Saturation,
 		Contrast:         job.Contrast,
-		Interpolate:      job.Interpolate,
 	}
 
 	runpodJobID, err := h.worker.Enqueue(ctx, req)

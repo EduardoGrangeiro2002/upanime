@@ -23,19 +23,6 @@ describe("Upscale Page", () => {
     expect(screen.getByRole("slider", { name: "Contraste" })).toBeInTheDocument()
   })
 
-  it("toggles the 60fps interpolation option", async () => {
-    const user = userEvent.setup()
-    await openUpscalePage(user)
-
-    const toggle = screen.getByRole("button", { name: "Desativada" })
-    expect(toggle).toHaveAttribute("aria-pressed", "false")
-
-    await user.click(toggle)
-
-    const enabled = screen.getByRole("button", { name: "Ativada" })
-    expect(enabled).toHaveAttribute("aria-pressed", "true")
-  })
-
   it("shows the action bar only after selecting episodes and starts the job", async () => {
     const user = userEvent.setup()
     await openUpscalePage(user)

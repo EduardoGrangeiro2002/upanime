@@ -1,30 +1,9 @@
 from __future__ import annotations
 
 import mimetypes
-from pathlib import Path, PurePosixPath
+from pathlib import Path
 
 from botocore.exceptions import ClientError
-
-_KNOWN_CONTENT_TYPES = {
-    ".mp4": "video/mp4",
-    ".webm": "video/webm",
-    ".mkv": "video/x-matroska",
-    ".avi": "video/x-msvideo",
-    ".mov": "video/quicktime",
-    ".jpg": "image/jpeg",
-    ".jpeg": "image/jpeg",
-    ".png": "image/png",
-    ".webp": "image/webp",
-    ".gif": "image/gif",
-}
-
-
-def _content_type_for_key(key: str) -> str:
-    ext = PurePosixPath(key).suffix.lower()
-    if ext in _KNOWN_CONTENT_TYPES:
-        return _KNOWN_CONTENT_TYPES[ext]
-    guessed, _ = mimetypes.guess_type(key)
-    return guessed or "application/octet-stream"
 
 
 class R2StorageClient:
@@ -42,11 +21,14 @@ class R2StorageClient:
         )
 
     def upload_file(self, source_path: Path, storage_key: str) -> None:
+        content_type, _ = mimetypes.guess_type(storage_key)
+        if not content_type:
+            content_type = "application/octet-stream"
         self._client.upload_file(
             str(source_path),
             self._bucket_name,
             storage_key,
-            ExtraArgs={"ContentType": _content_type_for_key(storage_key)},
+            ExtraArgs={"ContentType": content_type},
         )
 
     def exists(self, storage_key: str) -> bool:

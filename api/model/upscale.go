@@ -10,7 +10,6 @@ type UpscaleJob struct {
 	Sharpen          *float64 `json:"sharpen,omitempty"`
 	Saturation       *float64 `json:"saturation,omitempty"`
 	Contrast         *float64 `json:"contrast,omitempty"`
-	Interpolate      bool     `json:"interpolate,omitempty"`
 	RunPodJobID      string   `json:"-"`
 	SourceStorageKey string   `json:"-"`
 	ResultStorageKey string   `json:"resultStorageKey,omitempty"`
@@ -33,5 +32,4 @@ type CreateUpscaleRequest struct {
 	Sharpen      *float64   `json:"sharpen,omitempty"`
 	Saturation   *float64   `json:"saturation,omitempty"`
 	Contrast     *float64   `json:"contrast,omitempty"`
-	Interpolate  bool       `json:"interpolate,omitempty"`
 }

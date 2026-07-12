@@ -99,7 +99,6 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 		AnimeID:      anime.ID,
 		EpisodeIDs:   []model.StringID{anime.Seasons[0].Episodes[0].ID},
 		TargetHeight: 2160,
-		Interpolate:  true,
 	})
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
@@ -137,9 +136,6 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 		}
 		if queuedJob.TargetHeight != 2160 {
 			t.Errorf("unexpected worker target height: %d", queuedJob.TargetHeight)
-		}
-		if !queuedJob.Interpolate {
-			t.Error("expected interpolate to reach the worker job")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected job to be queued in worker client")

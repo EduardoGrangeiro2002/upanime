@@ -94,7 +94,6 @@ def test_upscale_job_runner_success(tmp_path):
             sourceStorageKey="animes/test/source.mp4",
             resultStorageKey="animes/test/source_upscaled.mp4",
             targetHeight=1440,
-            interpolate=True,
             callbackUrl=f"{base_url}/callback",
         )
 
@@ -102,7 +101,6 @@ def test_upscale_job_runner_success(tmp_path):
 
         assert storage.exists("animes/test/source_upscaled.mp4")
         assert pipeline.heights == [1440]
-        assert pipeline.last_kwargs["interpolate"] is True
         assert CallbackServerHandler.callbacks == [{
             "jobId": 11,
             "status": "completed",
@@ -203,7 +201,6 @@ def test_handler_end_to_end(tmp_path, monkeypatch):
                 "sourceStorageKey": "animes/test/source.mp4",
                 "resultStorageKey": "animes/test/source_upscaled.mp4",
                 "targetHeight": 2160,
-                "interpolate": True,
                 "callbackUrl": f"{base_url}/callback",
             }
         })
@@ -214,7 +211,6 @@ def test_handler_end_to_end(tmp_path, monkeypatch):
         }
         assert storage.exists("animes/test/source_upscaled.mp4")
         assert pipeline.heights == [2160]
-        assert pipeline.last_kwargs["interpolate"] is True
         assert CallbackServerHandler.callbacks == [{
             "jobId": 99,
             "status": "completed",

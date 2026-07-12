@@ -21,7 +21,6 @@ class VideoPipeline(Protocol):
         sharpen: float | None = None,
         saturation: float | None = None,
         contrast: float | None = None,
-        interpolate: bool = False,
     ) -> None: ...
 
 
@@ -61,7 +60,6 @@ class UpscaleJobRunner:
                 sharpen=job.sharpen,
                 saturation=job.saturation,
                 contrast=job.contrast,
-                interpolate=job.interpolate,
             )
             self._storage.upload_file(output_path, job.result_storage_key)
             self._ensure_uploaded(job.result_storage_key)

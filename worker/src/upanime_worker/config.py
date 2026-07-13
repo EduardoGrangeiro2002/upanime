@@ -13,6 +13,7 @@ class WorkerSettings:
     rife_dir: Path
     tagger_model_path: Path
     tagger_tags_path: Path
+    tagger_threshold: float
     target_height: int
     encode_preset: str
     force_interpolate: bool
@@ -33,6 +34,7 @@ def load_settings() -> WorkerSettings:
         rife_dir=Path(os.getenv("WORKER_RIFE_DIR", "./models/Practical-RIFE")),
         tagger_model_path=Path(os.getenv("WORKER_TAGGER_MODEL_PATH", "./models/wd-vit-tagger-v3.onnx")),
         tagger_tags_path=Path(os.getenv("WORKER_TAGGER_TAGS_PATH", "./models/wd-vit-tagger-v3-tags.csv")),
+        tagger_threshold=float(os.getenv("WORKER_TAGGER_THRESHOLD", "0.25")),
         target_height=int(os.getenv("WORKER_TARGET_HEIGHT", "1080")),
         encode_preset=os.getenv("WORKER_ENCODE_PRESET", "medium"),
         force_interpolate=os.getenv("WORKER_FORCE_INTERPOLATE", "0") == "1",

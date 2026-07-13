@@ -317,7 +317,7 @@ class QualityUpscalePipeline:
 
     def _shot_gate(
         self,
-        frame: object,
+        frames: list[object],
         shot_index: int,
         comp: EffectsComp,
         dataset_dir: Path | None,
@@ -326,11 +326,18 @@ class QualityUpscalePipeline:
         comp.reset()
         if self._tagger is None or not self._tagger.available():
             return True
-        tags = self._tagger.shot_effect_tags(frame)
-        if not tags:
-            return False
-        self._save_dataset_sample(frame, tags, shot_index, dataset_dir, runtime)
-        return True
+        for frame in frames:
+            tags = self._tagger.shot_effect_tags(frame)
+            if not tags:
+                continue
+            self._save_dataset_sample(frame, tags, shot_index, dataset_dir, runtime)
+            return True
+        return False
+
+    def _segment_samples(self, frames: list[object], start: int, end: int) -> list[object]:
+        length = end - start
+        picks = sorted({start, start + length // 3, start + 2 * length // 3})
+        return [frames[p] for p in picks if start <= p < end]
 
     def _save_dataset_sample(
         self,
@@ -416,6 +423,7 @@ class QualityUpscalePipeline:
         comp_active = False
         prev_small = None
         shot_index = 0
+        frames_in_shot = 0
 
         decoder.start()
         encoder.start()
@@ -433,8 +441,16 @@ class QualityUpscalePipeline:
                     if pending_images:
                         self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params, comp if comp_active else None)
                         pending_images = []
-                    comp_active = self._shot_gate(item, shot_index, comp, dataset_dir, runtime)
+                    comp_active = self._shot_gate([item], shot_index, comp, dataset_dir, runtime)
                     shot_index += 1
+                    frames_in_shot = 0
+                elif not comp_active:
+                    frames_in_shot += 1
+                    if frames_in_shot % 24 == 0 and self._shot_gate([item], shot_index - 1, comp, dataset_dir, runtime):
+                        if pending_images:
+                            self._write_batch(encode_queue, pending_images, runtime, metadata, encode_params, None)
+                            pending_images = []
+                        comp_active = True
                 prev_small = small
 
             pending_images.append(item)
@@ -612,11 +628,17 @@ class QualityUpscalePipeline:
             segment_ids[i] = segment_ids[i - 1] + (1 if is_scene_cut[i - 1] else 0)
         segment_comp: dict[int, bool] = {}
         if comp is not None:
-            for i, unique in enumerate(unique_frames):
-                sid = segment_ids[i]
-                if sid in segment_comp:
-                    continue
-                segment_comp[sid] = self._shot_gate(unique, sid, comp, dataset_dir, runtime)
+            segment_starts: dict[int, int] = {}
+            for i in range(len(unique_frames)):
+                segment_starts.setdefault(segment_ids[i], i)
+            for sid, start in segment_starts.items():
+                end = len(unique_frames)
+                for j in range(start, len(unique_frames)):
+                    if segment_ids[j] != sid:
+                        end = j
+                        break
+                samples = self._segment_samples(unique_frames, start, end)
+                segment_comp[sid] = self._shot_gate(samples, sid, comp, dataset_dir, runtime)
             logging.info(
                 "chain comp gate: %d/%d segments approved",
                 sum(1 for flag in segment_comp.values() if flag), len(segment_comp),

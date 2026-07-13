@@ -18,7 +18,7 @@ EFFECT_TAGS = {
     "magic_circle",
 }
 TAGGER_INPUT_SIZE = 448
-DEFAULT_THRESHOLD = 0.35
+DEFAULT_THRESHOLD = 0.25
 
 
 class EffectTagger:

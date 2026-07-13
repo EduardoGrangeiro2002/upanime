@@ -25,7 +25,7 @@ def _build_runner() -> UpscaleJobRunner:
         encode_preset=settings.encode_preset,
         enable_torch_compile=settings.enable_torch_compile,
         rife_dir=settings.rife_dir,
-        tagger=EffectTagger(settings.tagger_model_path, settings.tagger_tags_path),
+        tagger=EffectTagger(settings.tagger_model_path, settings.tagger_tags_path, settings.tagger_threshold),
     )
     storage = R2StorageClient(
         account_id=settings.r2_account_id,

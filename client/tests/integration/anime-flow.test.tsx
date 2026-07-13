@@ -13,7 +13,7 @@ describe("Anime Flow", () => {
     await user.click(screen.getByRole("button", { name: /buscar/i }))
 
     await waitFor(() => {
-      expect(screen.getByText("Shingeki no Kyojin")).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: "Shingeki no Kyojin" })).toBeInTheDocument()
     }, { timeout: 3000 })
   })
 
@@ -39,7 +39,7 @@ describe("Anime Flow", () => {
     await user.click(screen.getByRole("button", { name: /buscar/i }))
 
     await waitFor(() => {
-      expect(screen.getByText("Shingeki no Kyojin")).toBeInTheDocument()
+      expect(screen.getByRole("heading", { name: "Shingeki no Kyojin" })).toBeInTheDocument()
     }, { timeout: 3000 })
 
     expect(screen.getByRole("tab", { name: /Temporada 1/i })).toBeInTheDocument()

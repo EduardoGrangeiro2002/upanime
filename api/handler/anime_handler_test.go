@@ -10,7 +10,6 @@ import (
 	"upanime/api/handler"
 	"upanime/api/model"
 	"upanime/api/service"
-	"upanime/api/storage"
 	"upanime/api/store"
 	"upanime/api/testutil"
 )
@@ -28,11 +27,10 @@ func (f *fakeExecutor) Download(_ context.Context, _ string, _ string, _ int64, 
 	return nil
 }
 
-func TestAnimeHandler_Get_Scrapes(t *testing.T) {
+func TestAnimeHandler_Get_ScrapesWithoutPersisting(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	animeStore := store.NewSQLiteAnimeStore(db)
 	scraperStore := store.NewSQLiteScraperStore(db)
-	fs := storage.NewLocalStorage(t.TempDir())
 
 	exec := &fakeExecutor{
 		result: &model.Anime{
@@ -42,13 +40,13 @@ func TestAnimeHandler_Get_Scrapes(t *testing.T) {
 			Description: "Ninja anime",
 			Seasons: []model.Season{
 				{Number: 1, Type: "episode", Episodes: []model.Episode{
-					{Title: "Ep 1", Number: "1", URL: "https://animesonlinecc.to/episodio/naruto-1", Type: "episode"},
+					{Title: "Ep 1", Number: "1", URL: "https://animesonlinecc.to/episodio/naruto-1", Type: "episode", SeasonNumber: 1},
 				}},
 			},
 		},
 	}
 
-	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, service.NewEpisodeOrganizer("", "", ""))
+	h := handler.NewAnimeHandler(scraperStore, exec, service.NewEpisodeOrganizer("", "", ""))
 
 	req := httptest.NewRequest("GET", "/api/anime?url=https://animesonlinecc.to/anime/naruto", nil)
 	w := httptest.NewRecorder()
@@ -66,43 +64,34 @@ func TestAnimeHandler_Get_Scrapes(t *testing.T) {
 	if anime.Title != "Naruto" {
 		t.Errorf("expected 'Naruto', got '%s'", anime.Title)
 	}
+
+	saved, err := animeStore.List(t.Context())
+	if err != nil {
+		t.Fatalf("list animes: %v", err)
+	}
+	if len(saved) != 0 {
+		t.Errorf("expected preview not to persist, found %d animes", len(saved))
+	}
 }
 
-func TestAnimeHandler_Get_ReturnsCached(t *testing.T) {
+func TestAnimeHandler_Get_UnknownDomain(t *testing.T) {
 	db := testutil.NewTestDB(t)
-	animeStore := store.NewSQLiteAnimeStore(db)
 	scraperStore := store.NewSQLiteScraperStore(db)
-	fs := storage.NewLocalStorage(t.TempDir())
 
-	anime := &model.Anime{
-		Title:     "Cached Anime",
-		URL:       "https://animesonlinecc.to/anime/cached",
-		ScraperID: 1,
-		Seasons:   []model.Season{{Number: 1, Type: "episode"}},
-	}
-	_ = animeStore.Create(context.Background(), anime)
+	h := handler.NewAnimeHandler(scraperStore, &fakeExecutor{}, service.NewEpisodeOrganizer("", "", ""))
 
-	exec := &fakeExecutor{}
-	h := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, service.NewEpisodeOrganizer("", "", ""))
-
-	req := httptest.NewRequest("GET", "/api/anime?url=https://animesonlinecc.to/anime/cached", nil)
+	req := httptest.NewRequest("GET", "/api/anime?url=https://unknown-site.com/anime/x", nil)
 	w := httptest.NewRecorder()
 
 	h.Get(w, req)
 
-	if w.Code != http.StatusOK {
-		t.Fatalf("expected 200, got %d", w.Code)
-	}
-
-	var result model.Anime
-	json.NewDecoder(w.Body).Decode(&result)
-	if result.Title != "Cached Anime" {
-		t.Errorf("expected 'Cached Anime', got '%s'", result.Title)
+	if w.Code != http.StatusNotFound {
+		t.Fatalf("expected 404, got %d", w.Code)
 	}
 }
 
 func TestAnimeHandler_Get_MissingURL(t *testing.T) {
-	h := handler.NewAnimeHandler(nil, nil, nil, nil, service.NewEpisodeOrganizer("", "", ""))
+	h := handler.NewAnimeHandler(nil, nil, service.NewEpisodeOrganizer("", "", ""))
 
 	req := httptest.NewRequest("GET", "/api/anime", nil)
 	w := httptest.NewRecorder()

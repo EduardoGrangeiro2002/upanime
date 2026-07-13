@@ -1,7 +1,6 @@
 package handler
 
 import (
-	"context"
 	"encoding/json"
 	"log"
 	"net/http"
@@ -11,20 +10,17 @@ import (
 	"upanime/api/model"
 	"upanime/api/scraper"
 	"upanime/api/service"
-	"upanime/api/storage"
 	"upanime/api/store"
 )
 
 type AnimeHandler struct {
-	animes    store.AnimeStore
 	scrapers  store.ScraperStore
 	executor  scraper.Executor
-	storage   storage.FileStorage
 	organizer *service.EpisodeOrganizer
 }
 
-func NewAnimeHandler(animes store.AnimeStore, scrapers store.ScraperStore, executor scraper.Executor, fs storage.FileStorage, organizer *service.EpisodeOrganizer) *AnimeHandler {
-	return &AnimeHandler{animes: animes, scrapers: scrapers, executor: executor, storage: fs, organizer: organizer}
+func NewAnimeHandler(scrapers store.ScraperStore, executor scraper.Executor, organizer *service.EpisodeOrganizer) *AnimeHandler {
+	return &AnimeHandler{scrapers: scrapers, executor: executor, organizer: organizer}
 }
 
 func (h *AnimeHandler) Get(w http.ResponseWriter, r *http.Request) {
@@ -34,22 +30,13 @@ func (h *AnimeHandler) Get(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existing, err := h.animes.FindByURL(r.Context(), rawURL)
-	if err == nil {
-		h.populateCoverURL(r.Context(), existing)
-		ensureSeasons(existing)
-		writeJSON(w, existing)
-		return
-	}
-
 	parsed, err := url.Parse(rawURL)
 	if err != nil {
 		http.Error(w, `{"error":"invalid url"}`, http.StatusBadRequest)
 		return
 	}
 
-	sc, err := h.scrapers.FindByDomain(r.Context(), parsed.Host)
-	if err != nil {
+	if _, err := h.scrapers.FindByDomain(r.Context(), parsed.Host); err != nil {
 		http.Error(w, `{"error":"no scraper found for domain"}`, http.StatusNotFound)
 		return
 	}
@@ -66,49 +53,8 @@ func (h *AnimeHandler) Get(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	anime.ScraperID = sc.ID
-	if err := h.animes.Create(r.Context(), anime); err != nil {
-		http.Error(w, `{"error":"save failed: `+err.Error()+`"}`, http.StatusInternalServerError)
-		return
-	}
-
-	if anime.ImageURL != "" {
-		go h.downloadCoverAsync(anime.ID.Int64(), anime.ImageURL, anime.Title)
-	}
-
-	saved, err := h.animes.GetByID(r.Context(), anime.ID.Int64())
-	if err != nil {
-		ensureSeasons(anime)
-		writeJSON(w, anime)
-		return
-	}
-
-	ensureSeasons(saved)
-	writeJSON(w, saved)
-}
-
-func (h *AnimeHandler) downloadCoverAsync(animeID int64, imageURL, title string) {
-	ctx := context.Background()
-	slug := sanitize(title)
-	coverPath, err := service.DownloadCover(ctx, imageURL, slug, h.storage)
-	if err != nil {
-		log.Printf("cover download failed for anime %d: %v", animeID, err)
-		return
-	}
-	if err := h.animes.UpdateCoverPath(ctx, animeID, coverPath); err != nil {
-		log.Printf("update cover path failed for anime %d: %v", animeID, err)
-	}
-}
-
-func (h *AnimeHandler) populateCoverURL(ctx context.Context, a *model.Anime) {
-	if a.CoverPath == "" {
-		return
-	}
-	url, err := h.storage.URL(ctx, a.CoverPath)
-	if err != nil {
-		return
-	}
-	a.CoverURL = url
+	ensureSeasons(anime)
+	writeJSON(w, anime)
 }
 
 func ensureSeasons(a *model.Anime) {

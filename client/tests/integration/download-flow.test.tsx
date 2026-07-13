@@ -9,7 +9,7 @@ async function loadAnimeAndGetCheckboxes(user: ReturnType<typeof userEvent.setup
   await user.type(input, "https://animesonlinecc.to/anime/one-punch-man/")
   await user.click(screen.getByRole("button", { name: /buscar/i }))
   await waitFor(() => {
-    expect(screen.getByText("One Punch Man")).toBeInTheDocument()
+    expect(screen.getByRole("heading", { name: "One Punch Man" })).toBeInTheDocument()
   }, { timeout: 3000 })
   return screen.getAllByRole("checkbox")
 }
@@ -43,6 +43,48 @@ describe("Download Flow", () => {
     await waitFor(() => {
       const downloads = Object.values(useDownloads.getState().downloads)
       expect(downloads.length).toBe(2)
+    }, { timeout: 3000 })
+  })
+
+  it("defaults to creating a new anime with the scraped title", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const checkboxes = await loadAnimeAndGetCheckboxes(user)
+
+    const titleInput = screen.getByLabelText(/nome do novo anime/i)
+    expect(titleInput).toHaveValue("One Punch Man")
+
+    await user.click(checkboxes[0])
+    await user.click(screen.getByRole("button", { name: /baixar/i }))
+
+    await waitFor(() => {
+      const downloads = Object.values(useDownloads.getState().downloads)
+      expect(downloads.length).toBe(1)
+      expect(downloads[0].animeTitle).toBe("One Punch Man")
+    }, { timeout: 3000 })
+  })
+
+  it("allocates downloads to an existing catalog anime", async () => {
+    const user = userEvent.setup()
+    render(<App />)
+    const checkboxes = await loadAnimeAndGetCheckboxes(user)
+
+    const select = await screen.findByLabelText(/anime de destino/i)
+    await waitFor(() => {
+      expect(screen.getByRole("option", { name: "Shingeki no Kyojin" })).toBeInTheDocument()
+    }, { timeout: 3000 })
+    await user.selectOptions(select, "shingeki-no-kyojin")
+
+    expect(screen.queryByLabelText(/nome do novo anime/i)).not.toBeInTheDocument()
+
+    await user.click(checkboxes[0])
+    await user.click(screen.getByRole("button", { name: /baixar/i }))
+
+    await waitFor(() => {
+      const downloads = Object.values(useDownloads.getState().downloads)
+      expect(downloads.length).toBe(1)
+      expect(downloads[0].animeId).toBe("shingeki-no-kyojin")
+      expect(downloads[0].animeTitle).toBe("Shingeki no Kyojin")
     }, { timeout: 3000 })
   })
 })

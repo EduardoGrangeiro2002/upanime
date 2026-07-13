@@ -61,11 +61,21 @@ export interface Download {
   error?: string
 }
 
+export interface DownloadEpisodeInput {
+  title: string
+  number: string
+  url: string
+  seasonNumber: number
+}
+
 export interface DownloadRequest {
-  animeId: string
-  animeTitle: string
+  animeId?: string
+  animeTitle?: string
   animeImageUrl: string
-  episodeIds: string[]
+  description?: string
+  sourceUrl: string
+  seasonNumber?: number
+  episodes: DownloadEpisodeInput[]
 }
 
 export interface ProgressEvent {

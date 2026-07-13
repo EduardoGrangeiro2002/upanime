@@ -17,6 +17,7 @@ type UserStore interface {
 
 type AnimeStore interface {
 	FindByURL(ctx context.Context, url string) (*model.Anime, error)
+	FindByTitle(ctx context.Context, title string) (*model.Anime, error)
 	Create(ctx context.Context, anime *model.Anime) error
 	GetByID(ctx context.Context, id int64) (*model.Anime, error)
 	List(ctx context.Context) ([]model.Anime, error)

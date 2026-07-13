@@ -114,20 +114,22 @@ export const handlers = [
   http.post("/api/downloads", async ({ request }) => {
     await delay(300)
     const body = (await request.json()) as DownloadRequest
-    const anime = mockAnimes.find((a) => a.id === body.animeId)
 
-    if (!anime) {
-      return HttpResponse.json({ error: "Anime not found" }, { status: 404 })
+    if (!body.episodes?.length) {
+      return HttpResponse.json({ error: "episodes required" }, { status: 400 })
     }
 
-    const allEpisodes = anime.seasons.flatMap((s) => s.episodes)
-    const downloads = body.episodeIds
-      .map((epId) => {
-        const ep = allEpisodes.find((e) => e.id === epId)
-        if (!ep) return null
-        return createDownload(anime.id, body.animeTitle, body.animeImageUrl, ep.id, ep.title, ep.seasonNumber, ep.number)
-      })
-      .filter(Boolean)
+    const existing = mockAnimes.find((a) => a.id === body.animeId)
+    const animeId = existing?.id ?? `new-${Date.now()}`
+    const animeTitle = existing?.title ?? body.animeTitle ?? ""
+
+    if (!existing && !animeTitle) {
+      return HttpResponse.json({ error: "animeId or animeTitle required" }, { status: 400 })
+    }
+
+    const downloads = body.episodes.map((ep) =>
+      createDownload(animeId, animeTitle, body.animeImageUrl, ep.url, ep.title, body.seasonNumber ?? ep.seasonNumber, ep.number),
+    )
 
     return HttpResponse.json(downloads)
   }),

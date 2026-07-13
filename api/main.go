@@ -69,8 +69,8 @@ func main() {
 	classifier := service.NewGenreClassifier(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "", animeStore)
 	organizer := service.NewEpisodeOrganizer(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "")
 
-	animeHandler := handler.NewAnimeHandler(animeStore, scraperStore, exec, fs, organizer)
-	downloadHandler := handler.NewDownloadHandler(downloadStore, animeStore, episodeStore, exec, fs, classifier, cfg.DatabasePath, cfg.MaxDownloads)
+	animeHandler := handler.NewAnimeHandler(scraperStore, exec, organizer)
+	downloadHandler := handler.NewDownloadHandler(downloadStore, animeStore, episodeStore, scraperStore, exec, fs, classifier, cfg.DatabasePath, cfg.MaxDownloads)
 	catalogHandler := handler.NewCatalogHandler(animeStore, episodeStore, fs)
 	uploadHandler := handler.NewUploadHandler(animeStore, episodeStore, scraperStore, fs, classifier)
 

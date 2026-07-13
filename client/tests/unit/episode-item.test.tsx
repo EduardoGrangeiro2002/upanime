@@ -24,12 +24,12 @@ describe("EpisodeItem", () => {
     expect(screen.getByText("1x1")).toBeInTheDocument()
   })
 
-  it("calls onToggle with episode id when clicked", async () => {
+  it("calls onToggle with episode url when clicked", async () => {
     const onToggle = vi.fn()
     const user = userEvent.setup()
     render(<EpisodeItem episode={mockEpisode} checked={false} onToggle={onToggle} />)
     await user.click(screen.getByRole("checkbox"))
-    expect(onToggle).toHaveBeenCalledWith("ep-1")
+    expect(onToggle).toHaveBeenCalledWith("https://example.com/ep-1")
   })
 
   it("renders as checked when checked prop is true", () => {

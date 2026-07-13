@@ -3,11 +3,15 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"upanime/api/model"
@@ -21,6 +25,7 @@ type DownloadHandler struct {
 	downloads  store.DownloadStore
 	animes     store.AnimeStore
 	episodes   store.EpisodeStore
+	scrapers   store.ScraperStore
 	executor   scraper.Executor
 	storage    storage.FileStorage
 	classifier *service.GenreClassifier
@@ -32,6 +37,7 @@ func NewDownloadHandler(
 	downloads store.DownloadStore,
 	animes store.AnimeStore,
 	episodes store.EpisodeStore,
+	scrapers store.ScraperStore,
 	executor scraper.Executor,
 	fs storage.FileStorage,
 	classifier *service.GenreClassifier,
@@ -42,6 +48,7 @@ func NewDownloadHandler(
 		downloads:  downloads,
 		animes:     animes,
 		episodes:   episodes,
+		scrapers:   scrapers,
 		executor:   executor,
 		storage:    fs,
 		classifier: classifier,
@@ -57,17 +64,26 @@ func (h *DownloadHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if len(req.EpisodeIDs) == 0 {
-		http.Error(w, `{"error":"episodeIds required"}`, http.StatusBadRequest)
+	if len(req.Episodes) == 0 {
+		http.Error(w, `{"error":"episodes required"}`, http.StatusBadRequest)
 		return
 	}
 
-	var toCreate []model.Download
-	for _, epID := range req.EpisodeIDs {
-		toCreate = append(toCreate, model.Download{
-			EpisodeID: epID,
-			AnimeID:   req.AnimeID,
-		})
+	anime, animeCreated, err := h.resolveAnime(r.Context(), req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":%q}`, err.Error()), http.StatusBadRequest)
+		return
+	}
+
+	episodes, err := h.resolveEpisodes(r.Context(), anime, req)
+	if err != nil {
+		http.Error(w, `{"error":"save episodes failed"}`, http.StatusInternalServerError)
+		return
+	}
+
+	toCreate := make([]model.Download, len(episodes))
+	for i, ep := range episodes {
+		toCreate[i] = model.Download{EpisodeID: ep.ID, AnimeID: anime.ID}
 	}
 
 	created, err := h.downloads.Create(r.Context(), toCreate)
@@ -76,33 +92,128 @@ func (h *DownloadHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	anime, _ := h.animes.GetByID(r.Context(), req.AnimeID.Int64())
-	episodeMap := make(map[int64]model.Episode)
-	if anime != nil {
-		for _, s := range anime.Seasons {
-			for _, ep := range s.Episodes {
-				episodeMap[ep.ID.Int64()] = ep
-			}
-		}
-	}
-
 	for i := range created {
-		created[i].AnimeTitle = req.AnimeTitle
+		created[i].AnimeTitle = anime.Title
 		created[i].AnimeImageURL = req.AnimeImageURL
-		if ep, ok := episodeMap[created[i].EpisodeID.Int64()]; ok {
-			created[i].EpisodeTitle = ep.Title
-			created[i].EpisodeNumber = ep.Number
-			created[i].SeasonNumber = ep.SeasonNumber
-		}
+		created[i].EpisodeTitle = episodes[i].Title
+		created[i].EpisodeNumber = episodes[i].Number
+		created[i].SeasonNumber = episodes[i].SeasonNumber
 	}
 
 	for _, d := range created {
-		go h.processDownload(d, req.AnimeTitle)
+		go h.processDownload(d, anime.Title)
 	}
 
-	h.classifier.ClassifyAsync(req.AnimeID.Int64())
+	if animeCreated && anime.ImageURL != "" {
+		go h.downloadCoverAsync(anime.ID.Int64(), anime.ImageURL, anime.Title)
+	}
+
+	if animeCreated || len(anime.Genres) == 0 {
+		h.classifier.ClassifyAsync(anime.ID.Int64())
+	}
 
 	writeJSON(w, created)
+}
+
+func (h *DownloadHandler) resolveAnime(ctx context.Context, req model.CreateDownloadsRequest) (*model.Anime, bool, error) {
+	if req.AnimeID.Int64() > 0 {
+		anime, err := h.animes.GetByID(ctx, req.AnimeID.Int64())
+		if err != nil {
+			return nil, false, errors.New("anime not found")
+		}
+		return anime, false, nil
+	}
+
+	title := strings.TrimSpace(req.AnimeTitle)
+	if title == "" {
+		return nil, false, errors.New("animeId or animeTitle required")
+	}
+
+	if existing, err := h.animes.FindByTitle(ctx, title); err == nil {
+		return existing, false, nil
+	}
+
+	scraperID, err := h.scraperIDFor(ctx, req.SourceURL)
+	if err != nil {
+		return nil, false, err
+	}
+
+	anime := &model.Anime{
+		Title:       title,
+		URL:         req.SourceURL,
+		ImageURL:    req.AnimeImageURL,
+		Description: req.Description,
+		ScraperID:   scraperID,
+	}
+	if err := h.animes.Create(ctx, anime); err != nil {
+		anime.URL = "scrape://" + sanitize(title)
+		if err := h.animes.Create(ctx, anime); err != nil {
+			return nil, false, errors.New("create anime failed")
+		}
+	}
+	return anime, true, nil
+}
+
+func (h *DownloadHandler) scraperIDFor(ctx context.Context, sourceURL string) (int64, error) {
+	parsed, err := url.Parse(sourceURL)
+	if err != nil || parsed.Host == "" {
+		return 0, errors.New("valid sourceUrl required")
+	}
+	sc, err := h.scrapers.FindByDomain(ctx, parsed.Host)
+	if err != nil {
+		return 0, errors.New("no scraper found for domain")
+	}
+	return sc.ID, nil
+}
+
+func (h *DownloadHandler) resolveEpisodes(ctx context.Context, anime *model.Anime, req model.CreateDownloadsRequest) ([]model.Episode, error) {
+	existing := make(map[string]model.Episode)
+	for _, s := range anime.Seasons {
+		for _, ep := range s.Episodes {
+			existing[episodeKey(ep.SeasonNumber, ep.URL)] = ep
+		}
+	}
+
+	var episodes []model.Episode
+	for _, in := range req.Episodes {
+		season := in.SeasonNumber
+		if req.SeasonNumber > 0 {
+			season = req.SeasonNumber
+		}
+		if season < 1 {
+			season = 1
+		}
+
+		if ep, ok := existing[episodeKey(season, in.URL)]; ok {
+			episodes = append(episodes, ep)
+			continue
+		}
+
+		ep := model.Episode{Title: in.Title, Number: in.Number, URL: in.URL, Type: "episode"}
+		if err := h.animes.AddEpisode(ctx, anime.ID.Int64(), season, &ep); err != nil {
+			return nil, err
+		}
+		existing[episodeKey(season, ep.URL)] = ep
+		episodes = append(episodes, ep)
+	}
+	return episodes, nil
+}
+
+func episodeKey(season int, url string) string {
+	return fmt.Sprintf("%d|%s", season, url)
+}
+
+func (h *DownloadHandler) downloadCoverAsync(animeID int64, imageURL, title string) {
+	ctx := context.Background()
+	slug := sanitize(title)
+	coverPath, err := service.DownloadCover(ctx, imageURL, slug, h.storage)
+	if err != nil {
+		log.Printf("cover download failed for anime %d: %v", animeID, err)
+		return
+	}
+	if err := h.animes.UpdateCoverPath(ctx, animeID, coverPath); err != nil {
+		log.Printf("update cover path failed for anime %d: %v", animeID, err)
+	}
 }
 
 func (h *DownloadHandler) processDownload(d model.Download, animeTitle string) {
@@ -136,6 +247,9 @@ func (h *DownloadHandler) processDownload(d model.Download, animeTitle string) {
 
 	animeSlug := sanitize(animeTitle)
 	epSlug := sanitize(episode.Title)
+	if episode.Number != "" {
+		epSlug = fmt.Sprintf("s%02de%s", episode.SeasonNumber, sanitize(episode.Number))
+	}
 	storageKey := fmt.Sprintf("animes/%s/%s.mp4", animeSlug, epSlug)
 	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("upanime_%d.mp4", d.ID.Int64()))
 

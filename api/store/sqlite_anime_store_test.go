@@ -67,6 +67,34 @@ func TestSQLiteAnimeStore_CreateAndFindByURL(t *testing.T) {
 	}
 }
 
+func TestSQLiteAnimeStore_FindByTitle(t *testing.T) {
+	db := testutil.NewTestDB(t)
+	s := store.NewSQLiteAnimeStore(db)
+	ctx := context.Background()
+
+	anime := &model.Anime{
+		Title:     "Slayers Next",
+		URL:       "https://animesonlinecc.to/anime/slayers-next",
+		ScraperID: 1,
+		Seasons:   []model.Season{{Number: 1, Type: "episode"}},
+	}
+	if err := s.Create(ctx, anime); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	found, err := s.FindByTitle(ctx, "slayers next")
+	if err != nil {
+		t.Fatalf("FindByTitle case-insensitive: %v", err)
+	}
+	if found.ID.Int64() != anime.ID.Int64() {
+		t.Errorf("expected id %d, got %d", anime.ID.Int64(), found.ID.Int64())
+	}
+
+	if _, err := s.FindByTitle(ctx, "Unknown Title"); err == nil {
+		t.Error("expected error for unknown title")
+	}
+}
+
 func TestSQLiteAnimeStore_GetByID(t *testing.T) {
 	db := testutil.NewTestDB(t)
 	s := store.NewSQLiteAnimeStore(db)

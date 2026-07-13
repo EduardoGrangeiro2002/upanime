@@ -19,9 +19,19 @@ type Download struct {
 	UpdatedAt     string   `json:"updatedAt,omitempty"`
 }
 
+type DownloadEpisodeInput struct {
+	Title        string `json:"title"`
+	Number       string `json:"number"`
+	URL          string `json:"url"`
+	SeasonNumber int    `json:"seasonNumber"`
+}
+
 type CreateDownloadsRequest struct {
-	AnimeID       StringID   `json:"animeId"`
-	AnimeTitle    string     `json:"animeTitle"`
-	AnimeImageURL string     `json:"animeImageUrl"`
-	EpisodeIDs    []StringID `json:"episodeIds"`
+	AnimeID       StringID               `json:"animeId"`
+	AnimeTitle    string                 `json:"animeTitle"`
+	AnimeImageURL string                 `json:"animeImageUrl"`
+	Description   string                 `json:"description"`
+	SourceURL     string                 `json:"sourceUrl"`
+	SeasonNumber  int                    `json:"seasonNumber"`
+	Episodes      []DownloadEpisodeInput `json:"episodes"`
 }

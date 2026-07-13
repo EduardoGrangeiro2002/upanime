@@ -63,10 +63,11 @@ func ParseScrapeOutput(data []byte) (*model.Anime, error) {
 		}
 
 		seasonMap[key].Episodes = append(seasonMap[key].Episodes, model.Episode{
-			Title:  ep.Title,
-			Number: ep.Number,
-			URL:    ep.URL,
-			Type:   "episode",
+			Title:        ep.Title,
+			Number:       ep.Number,
+			URL:          ep.URL,
+			Type:         "episode",
+			SeasonNumber: seasonMap[key].Number,
 		})
 	}
 

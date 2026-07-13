@@ -1,13 +1,13 @@
 import { useState, useMemo } from "react"
 import { Download } from "lucide-react"
-import type { Anime, Season } from "@/api/types"
+import type { Anime, Episode, Season } from "@/api/types"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { Button } from "@/components/ui/button"
 import { EpisodeItem } from "./episode-item"
 
 interface EpisodeListProps {
   anime: Anime
-  onDownload: (animeId: string, episodeIds: string[]) => void
+  onDownload: (episodes: Episode[]) => void
   isDownloading: boolean
 }
 
@@ -28,28 +28,28 @@ export function EpisodeList({ anime, onDownload, isDownloading }: EpisodeListPro
 
   const defaultTab = tabs[0]?.key ?? ""
 
-  const toggleEpisode = (id: string) => {
+  const toggleEpisode = (url: string) => {
     setSelected((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) {
-        next.delete(id)
+      if (next.has(url)) {
+        next.delete(url)
       } else {
-        next.add(id)
+        next.add(url)
       }
       return next
     })
   }
 
   const toggleAllInSeason = (season: Season) => {
-    const episodeIds = season.episodes.map((e) => e.id)
-    const allSelected = episodeIds.every((id) => selected.has(id))
+    const episodeUrls = season.episodes.map((e) => e.url)
+    const allSelected = episodeUrls.every((url) => selected.has(url))
     setSelected((prev) => {
       const next = new Set(prev)
-      for (const id of episodeIds) {
+      for (const url of episodeUrls) {
         if (allSelected) {
-          next.delete(id)
+          next.delete(url)
         } else {
-          next.add(id)
+          next.add(url)
         }
       }
       return next
@@ -58,7 +58,8 @@ export function EpisodeList({ anime, onDownload, isDownloading }: EpisodeListPro
 
   const handleDownload = () => {
     if (selected.size === 0) return
-    onDownload(anime.id, Array.from(selected))
+    const episodes = anime.seasons.flatMap((s) => s.episodes).filter((e) => selected.has(e.url))
+    onDownload(episodes)
     setSelected(new Set())
   }
 
@@ -87,14 +88,14 @@ export function EpisodeList({ anime, onDownload, isDownloading }: EpisodeListPro
                 onClick={() => toggleAllInSeason(tab.season)}
                 className="mb-2 text-xs text-primary hover:underline"
               >
-                {tab.season.episodes.every((e) => selected.has(e.id)) ? "Desmarcar tudo" : "Selecionar tudo"}
+                {tab.season.episodes.every((e) => selected.has(e.url)) ? "Desmarcar tudo" : "Selecionar tudo"}
               </button>
               <div className="max-h-[400px] space-y-0.5 overflow-y-auto">
                 {tab.season.episodes.map((ep) => (
                   <EpisodeItem
-                    key={ep.id}
+                    key={ep.url}
                     episode={ep}
-                    checked={selected.has(ep.id)}
+                    checked={selected.has(ep.url)}
                     onToggle={toggleEpisode}
                   />
                 ))}

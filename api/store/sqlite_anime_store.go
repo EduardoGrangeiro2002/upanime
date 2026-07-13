@@ -43,6 +43,32 @@ func (s *SQLiteAnimeStore) FindByURL(ctx context.Context, url string) (*model.An
 	return &a, nil
 }
 
+func (s *SQLiteAnimeStore) FindByTitle(ctx context.Context, title string) (*model.Anime, error) {
+	row := s.db.QueryRowContext(ctx,
+		"SELECT id, title, url, image_url, description, cover_path, genres, scraper_id, created_at, updated_at FROM animes WHERE title = ? COLLATE NOCASE",
+		title,
+	)
+
+	var a model.Anime
+	var id, scraperID int64
+	var genresJSON string
+	err := row.Scan(&id, &a.Title, &a.URL, &a.ImageURL, &a.Description, &a.CoverPath, &genresJSON, &scraperID, &a.CreatedAt, &a.UpdatedAt)
+	if err != nil {
+		return nil, fmt.Errorf("find anime by title: %w", err)
+	}
+	a.ID = model.StringID(id)
+	a.ScraperID = scraperID
+	a.Genres = genresFromJSON(genresJSON)
+
+	seasons, err := s.loadSeasons(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	a.Seasons = seasons
+
+	return &a, nil
+}
+
 func (s *SQLiteAnimeStore) Create(ctx context.Context, anime *model.Anime) error {
 	tx, err := s.db.BeginTx(ctx, nil)
 	if err != nil {

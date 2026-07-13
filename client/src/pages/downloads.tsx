@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import { toast } from "sonner"
 import { UrlInput } from "@/components/anime/url-input"
 import { UploadForm } from "@/components/anime/upload-form"
@@ -6,27 +6,55 @@ import { AnimeCard } from "@/components/anime/anime-card"
 import { EpisodeList } from "@/components/anime/episode-list"
 import { DownloadQueue } from "@/components/download/download-queue"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
+import { Input } from "@/components/ui/input"
 import { useAnime } from "@/hooks/use-anime"
+import { useCatalog } from "@/hooks/use-catalog"
 import { useDownloads } from "@/hooks/use-downloads"
 import { startDownloads } from "@/api/endpoints"
 import { useDownloadPolling } from "@/hooks/use-download-polling"
+import type { Episode } from "@/api/types"
 
 export function DownloadsPage() {
   useDownloadPolling()
   const [animeUrl, setAnimeUrl] = useState("")
   const [isDownloading, setIsDownloading] = useState(false)
+  const [targetAnimeId, setTargetAnimeId] = useState("")
+  const [customTitle, setCustomTitle] = useState<string | null>(null)
+  const [targetSeason, setTargetSeason] = useState("")
   const { data: anime, isLoading, isError } = useAnime(animeUrl)
+  const { data: catalog } = useCatalog()
   const addDownloads = useDownloads((s) => s.addDownloads)
 
-  const handleDownload = async (animeId: string, episodeIds: string[]) => {
+  useEffect(() => {
+    setTargetAnimeId("")
+    setCustomTitle(null)
+    setTargetSeason("")
+  }, [anime?.url])
+
+  const handleDownload = async (episodes: Episode[]) => {
     if (!anime) return
+
+    const newTitle = (customTitle ?? anime.title).trim()
+    if (!targetAnimeId && !newTitle) {
+      toast.error("Informe o nome do anime ou escolha um do catálogo")
+      return
+    }
+
     setIsDownloading(true)
     try {
       const downloads = await startDownloads({
-        animeId,
-        animeTitle: anime.title,
+        animeId: targetAnimeId || undefined,
+        animeTitle: targetAnimeId ? undefined : newTitle,
         animeImageUrl: anime.imageUrl,
-        episodeIds,
+        description: anime.description,
+        sourceUrl: anime.url,
+        seasonNumber: targetSeason ? Number(targetSeason) : undefined,
+        episodes: episodes.map((e) => ({
+          title: e.title,
+          number: e.number,
+          url: e.url,
+          seasonNumber: e.seasonNumber,
+        })),
       })
       addDownloads(downloads)
       toast.success(
@@ -69,6 +97,51 @@ export function DownloadsPage() {
             )}
 
             <AnimeCard anime={anime} isLoading={isLoading} />
+
+            {anime && (
+              <div className="rounded-xl border border-border p-4 space-y-3">
+                <h3 className="text-sm font-medium text-muted-foreground uppercase tracking-wider">Salvar no catálogo</h3>
+                <div className="grid gap-3 sm:grid-cols-3">
+                  <div className="space-y-1.5">
+                    <label htmlFor="target-anime" className="text-sm font-medium">Anime de destino</label>
+                    <select
+                      id="target-anime"
+                      value={targetAnimeId}
+                      onChange={(e) => setTargetAnimeId(e.target.value)}
+                      className="flex h-9 w-full rounded-lg bg-input px-3 py-1 text-sm shadow-sm transition-all focus-visible:outline-none focus-visible:border-b-2 focus-visible:border-primary"
+                    >
+                      <option value="">Criar novo anime</option>
+                      {catalog?.map((a) => (
+                        <option key={a.id} value={a.id}>{a.title}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  {!targetAnimeId && (
+                    <div className="space-y-1.5">
+                      <label htmlFor="new-anime-title" className="text-sm font-medium">Nome do novo anime</label>
+                      <Input
+                        id="new-anime-title"
+                        value={customTitle ?? anime.title}
+                        onChange={(e) => setCustomTitle(e.target.value)}
+                      />
+                    </div>
+                  )}
+
+                  <div className="space-y-1.5">
+                    <label htmlFor="target-season" className="text-sm font-medium">Temporada de destino</label>
+                    <Input
+                      id="target-season"
+                      type="number"
+                      min={1}
+                      value={targetSeason}
+                      onChange={(e) => setTargetSeason(e.target.value)}
+                      placeholder="Manter numeração do site"
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
 
             {anime && (
               <EpisodeList

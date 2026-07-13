@@ -62,6 +62,26 @@ def test_strength_zero_keeps_frame_close_to_original():
     assert diff < 0.02
 
 
+def test_thin_text_stroke_suppressed_at_high_resolution():
+    comp = make_comp()
+    frame = torch.full((1, 3, 1440, 2560), 0.15)
+    frame[:, 2, 100:112, 200:2000] = 0.9
+    frame[:, 1, 100:112, 200:2000] = 0.1
+    frame[:, 0, 100:112, 200:2000] = 0.1
+    out = comp.process(frame.clone())
+    assert torch.equal(out, frame)
+
+
+def test_fire_still_detected_at_high_resolution():
+    comp = make_comp()
+    frame = torch.full((1, 3, 1440, 2560), 0.15)
+    frame[:, 2, 500:900, 900:1500] = 0.95
+    frame[:, 1, 500:900, 900:1500] = 0.75
+    frame[:, 0, 500:900, 900:1500] = 0.15
+    comp.process(frame)
+    assert float(comp._mask_ema.mean()) >= MASK_MIN_AREA
+
+
 def test_output_stays_in_range():
     comp = make_comp(strength=1.5)
     frame = fire_frame()

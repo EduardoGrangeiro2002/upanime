@@ -11,6 +11,7 @@ GROW_ITERATIONS = 16
 GROW_WEIGHT = 0.65
 MASK_MIN_AREA = 0.004
 MASK_EMA = 0.55
+MASK_WORK_HEIGHT = 720
 BLOOM_SCALES = (4, 8, 16)
 BLOOM_WEIGHTS = (0.45, 0.35, 0.25)
 EFFECT_SATURATION = 1.35
@@ -109,6 +110,18 @@ class EffectsComp:
 
     def _mask(self, frame: object) -> object:
         torch = self._torch
+        _, _, height, width = frame.shape
+        work = frame
+        if height > MASK_WORK_HEIGHT:
+            work_width = max(2, int(round(width * MASK_WORK_HEIGHT / height)))
+            work = torch.nn.functional.interpolate(frame, size=(MASK_WORK_HEIGHT, work_width), mode="area")
+        mask = self._mask_at_work_resolution(work)
+        if mask.shape[-2:] != (height, width):
+            mask = torch.nn.functional.interpolate(mask, size=(height, width), mode="bilinear", align_corners=False)
+        return mask
+
+    def _mask_at_work_resolution(self, frame: object) -> object:
+        torch = self._torch
         v = frame.amax(dim=1, keepdim=True)
         mn = frame.amin(dim=1, keepdim=True)
         s = (v - mn) / v.clamp(min=1e-6)
@@ -155,9 +168,10 @@ class EffectsComp:
     def _heat(self, frame: object, mask: object) -> object:
         torch = self._torch
         _, _, height, width = frame.shape
-        strength = torch.nn.functional.avg_pool2d(mask, 9, stride=1, padding=4) * HEAT_AMPLITUDE
+        scale = max(1.0, height / MASK_WORK_HEIGHT)
+        strength = torch.nn.functional.avg_pool2d(mask, 9, stride=1, padding=4) * HEAT_AMPLITUDE * scale
         ys = torch.arange(height, device=self._device, dtype=frame.dtype)
-        ripple = torch.sin(ys / 6.5 + self._frame_index * 1.1)[None, None, :, None] * strength
+        ripple = torch.sin(ys / (6.5 * scale) + self._frame_index * 1.1)[None, None, :, None] * strength
         base_y = torch.linspace(-1, 1, height, device=self._device, dtype=frame.dtype)
         base_x = torch.linspace(-1, 1, width, device=self._device, dtype=frame.dtype)
         grid_y, grid_x = torch.meshgrid(base_y, base_x, indexing="ij")
@@ -198,7 +212,8 @@ class EffectsComp:
 
     def _shake(self, frame: object) -> object:
         torch = self._torch
-        amplitude = SHAKE_PIXELS * self._shake_energy * self._strength
+        height = frame.shape[-2]
+        amplitude = SHAKE_PIXELS * self._shake_energy * self._strength * max(1.0, height / MASK_WORK_HEIGHT)
         if amplitude <= 0:
             return frame
         offsets = torch.normal(0.0, amplitude, (2,), generator=self._shake_generator)

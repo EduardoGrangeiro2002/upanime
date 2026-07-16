@@ -106,9 +106,10 @@ func main() {
 	}
 
 	userStore := store.NewSQLiteUserStore(database)
+	codeStore := auth.NewCodeStore(redisClient)
 	authService := auth.NewService(
 		userStore,
-		auth.NewCodeStore(redisClient),
+		codeStore,
 		mailer,
 		auth.NewIPAPIGeo(),
 		auth.NewTokenSigner(authSecret),
@@ -125,6 +126,7 @@ func main() {
 	r.Get("/api/health", handler.HealthHandler())
 
 	r.Route("/api/auth", func(ar chi.Router) {
+		ar.Use(handler.RateLimitAuth(codeStore))
 		ar.Post("/login", authHandler.Login)
 		ar.Post("/change-password", authHandler.ChangePassword)
 		ar.Post("/mfa", authHandler.VerifyMFA)

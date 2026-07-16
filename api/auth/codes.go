@@ -16,9 +16,14 @@ const (
 	PurposeMFA   = "mfa"
 	PurposeReset = "reset"
 
-	codeTTL     = 15 * time.Minute
-	maxAttempts = 5
+	codeTTL         = 15 * time.Minute
+	maxAttempts     = 5
+	issueCooldown   = time.Minute
+	rateLimitWindow = 15 * time.Minute
+	rateLimitMax    = 30
 )
+
+var ErrCooldown = errors.New("aguarde antes de pedir um novo código")
 
 type CodeStore struct {
 	client *redis.Client
@@ -29,6 +34,14 @@ func NewCodeStore(client *redis.Client) *CodeStore {
 }
 
 func (c *CodeStore) Issue(ctx context.Context, purpose, email string) (string, error) {
+	acquired, err := c.client.SetNX(ctx, cooldownKey(purpose, email), "1", issueCooldown).Result()
+	if err != nil {
+		return "", err
+	}
+	if !acquired {
+		return "", ErrCooldown
+	}
+
 	n, err := rand.Int(rand.Reader, big.NewInt(1000000))
 	if err != nil {
 		return "", err
@@ -69,10 +82,26 @@ func (c *CodeStore) Verify(ctx context.Context, purpose, email, code string) (bo
 	return false, nil
 }
 
+func (c *CodeStore) AllowIP(ctx context.Context, ip string) (bool, error) {
+	key := "auth:rl:" + ip
+	count, err := c.client.Incr(ctx, key).Result()
+	if err != nil {
+		return false, err
+	}
+	if count == 1 {
+		c.client.Expire(ctx, key, rateLimitWindow)
+	}
+	return count <= rateLimitMax, nil
+}
+
 func codeKey(purpose, email string) string {
 	return "auth:" + purpose + ":" + email
 }
 
 func attemptsKey(purpose, email string) string {
 	return "auth:" + purpose + ":" + email + ":attempts"
+}
+
+func cooldownKey(purpose, email string) string {
+	return "auth:" + purpose + ":" + email + ":cooldown"
 }

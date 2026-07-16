@@ -38,6 +38,19 @@ func UserEmail(ctx context.Context) string {
 	return email
 }
 
+func RateLimitAuth(codes *auth.CodeStore) func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			allowed, err := codes.AllowIP(r.Context(), clientIP(r))
+			if err == nil && !allowed {
+				writeJSONError(w, "muitas tentativas, aguarde alguns minutos", http.StatusTooManyRequests)
+				return
+			}
+			next.ServeHTTP(w, r)
+		})
+	}
+}
+
 func RequireAdmin(users store.UserStore) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

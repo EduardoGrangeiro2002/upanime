@@ -106,6 +106,9 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) error {
 	}
 
 	code, err := s.codes.Issue(ctx, PurposeReset, email)
+	if errors.Is(err, ErrCooldown) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
@@ -170,6 +173,9 @@ func (s *Service) gateMFA(ctx context.Context, email, ip, lastIP, lastLocation s
 	}
 
 	code, err := s.codes.Issue(ctx, PurposeMFA, email)
+	if errors.Is(err, ErrCooldown) {
+		return Result{Step: StepMFA}, nil
+	}
 	if err != nil {
 		return Result{}, err
 	}

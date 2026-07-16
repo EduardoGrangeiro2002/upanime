@@ -64,9 +64,10 @@ func setupAuthTest(t *testing.T) *authTestEnv {
 		now:    time.Date(2026, 7, 10, 12, 0, 0, 0, time.UTC),
 	}
 
+	codeStore := auth.NewCodeStore(redisClient)
 	service := auth.NewService(
 		env.users,
-		auth.NewCodeStore(redisClient),
+		codeStore,
 		env.mailer,
 		env.geo,
 		auth.NewTokenSigner("test-secret"),
@@ -77,6 +78,7 @@ func setupAuthTest(t *testing.T) *authTestEnv {
 
 	router := chi.NewRouter()
 	router.Route("/api/auth", func(r chi.Router) {
+		r.Use(handler.RateLimitAuth(codeStore))
 		r.Post("/login", authHandler.Login)
 		r.Post("/change-password", authHandler.ChangePassword)
 		r.Post("/mfa", authHandler.VerifyMFA)
@@ -359,6 +361,89 @@ func TestForgotUnknownEmailDoesNotLeak(t *testing.T) {
 	}
 	if len(env.mailer.emails) != 0 {
 		t.Fatal("expected no email sent for unknown user")
+	}
+}
+
+func TestForgotCooldownLimitsEmails(t *testing.T) {
+	env := setupAuthTest(t)
+	env.createUser(t, "dono@upanime.dev", "senha-definitiva", false)
+
+	first := env.post(t, "/api/auth/forgot", map[string]string{"email": "dono@upanime.dev"})
+	second := env.post(t, "/api/auth/forgot", map[string]string{"email": "dono@upanime.dev"})
+	if first.Code != http.StatusOK || second.Code != http.StatusOK {
+		t.Fatalf("expected 200 on both requests, got %d and %d", first.Code, second.Code)
+	}
+	if len(env.mailer.emails) != 1 {
+		t.Fatalf("expected 1 email during cooldown, got %d", len(env.mailer.emails))
+	}
+
+	code := env.storedCode(t, "reset", "dono@upanime.dev")
+	reset := env.post(t, "/api/auth/reset", map[string]string{
+		"email": "dono@upanime.dev", "code": code, "newPassword": "senha-nova-123",
+	})
+	if reset.Code != http.StatusOK {
+		t.Fatalf("original code should stay valid during cooldown, got %d", reset.Code)
+	}
+
+	env.redis.FastForward(61 * time.Second)
+	env.post(t, "/api/auth/forgot", map[string]string{"email": "dono@upanime.dev"})
+	if len(env.mailer.emails) != 2 {
+		t.Fatalf("expected new email after cooldown, got %d", len(env.mailer.emails))
+	}
+}
+
+func TestLoginDuringCooldownKeepsCodeAndSkipsResend(t *testing.T) {
+	env := setupAuthTest(t)
+	env.createUser(t, "dono@upanime.dev", "senha-definitiva", false)
+
+	env.post(t, "/api/auth/login", map[string]string{
+		"email": "dono@upanime.dev", "password": "senha-definitiva",
+	})
+	code := env.storedCode(t, "mfa", "dono@upanime.dev")
+
+	retry := env.post(t, "/api/auth/login", map[string]string{
+		"email": "dono@upanime.dev", "password": "senha-definitiva",
+	})
+	if retry.Code != http.StatusOK || decodeStep(t, retry) != "mfa" {
+		t.Fatalf("expected mfa step on retry, got %d %s", retry.Code, retry.Body.String())
+	}
+	if len(env.mailer.emails) != 1 {
+		t.Fatalf("expected single email during cooldown, got %d", len(env.mailer.emails))
+	}
+
+	verify := env.post(t, "/api/auth/mfa", map[string]string{
+		"email": "dono@upanime.dev", "code": code,
+	})
+	if verify.Code != http.StatusOK || decodeStep(t, verify) != "ok" {
+		t.Fatalf("expected original code to work, got %d %s", verify.Code, verify.Body.String())
+	}
+}
+
+func TestAuthRateLimitByIP(t *testing.T) {
+	env := setupAuthTest(t)
+
+	for i := 0; i < 30; i++ {
+		response := env.post(t, "/api/auth/login", map[string]string{
+			"email": "x@upanime.dev", "password": "errada",
+		})
+		if response.Code != http.StatusUnauthorized {
+			t.Fatalf("request %d: expected 401, got %d", i, response.Code)
+		}
+	}
+
+	blocked := env.post(t, "/api/auth/login", map[string]string{
+		"email": "x@upanime.dev", "password": "errada",
+	})
+	if blocked.Code != http.StatusTooManyRequests {
+		t.Fatalf("expected 429 after limit, got %d", blocked.Code)
+	}
+
+	env.redis.FastForward(16 * time.Minute)
+	after := env.post(t, "/api/auth/login", map[string]string{
+		"email": "x@upanime.dev", "password": "errada",
+	})
+	if after.Code != http.StatusUnauthorized {
+		t.Fatalf("expected limit reset after window, got %d", after.Code)
 	}
 }
 

@@ -28,6 +28,7 @@ def download_ytdlp(embed_url: str, dest_path: str, on_progress=None) -> bool:
     ydl_opts = {
         "quiet": True,
         "no_warnings": True,
+        "compat_opts": ["no-certifi"],
         "format": "best[ext=mp4]/best",
         "outtmpl": dest_path,
         "progress_hooks": [progress_hook],

@@ -1,6 +1,27 @@
 import json
+import os
 import sys
+import tempfile
 from urllib.parse import urlparse
+
+import certifi
+
+
+def ensure_ca_bundle() -> str:
+    extra = os.path.join(os.path.dirname(os.path.abspath(__file__)), "certs", "letsencrypt-yr.pem")
+    if not os.path.exists(extra):
+        return certifi.where()
+    bundle = os.path.join(tempfile.gettempdir(), "upanime-ca.pem")
+    tmp = f"{bundle}.{os.getpid()}"
+    with open(certifi.where()) as base, open(extra) as ex, open(tmp, "w") as out:
+        out.write(base.read())
+        out.write("\n")
+        out.write(ex.read())
+    os.replace(tmp, bundle)
+    return bundle
+
+
+os.environ.setdefault("SSL_CERT_FILE", ensure_ca_bundle())
 
 from sites import get_scraper
 from browser import close_browser

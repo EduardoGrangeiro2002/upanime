@@ -231,6 +231,7 @@ name = "upanime-scraper"
 version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
+    { name = "certifi" },
     { name = "httpx" },
     { name = "playwright" },
     { name = "playwright-stealth" },
@@ -244,6 +245,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
+    { name = "certifi", specifier = ">=2026.2.25" },
     { name = "httpx", specifier = ">=0.27" },
     { name = "playwright", specifier = ">=1.40" },
     { name = "playwright-stealth", specifier = ">=1.0" },

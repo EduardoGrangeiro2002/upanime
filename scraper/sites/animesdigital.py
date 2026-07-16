@@ -16,7 +16,8 @@ def resolve_embed(embed_url: str) -> str:
 class AnimesdigitalScraper:
     def scrape_anime(self, url: str) -> dict:
         with get_page() as page:
-            page.goto(url, wait_until="networkidle")
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_selector("a.b_flex[href*='/video/']")
 
             title_el = page.query_selector("h1")
             title = title_el.inner_text().strip() if title_el else ""
@@ -65,7 +66,8 @@ class AnimesdigitalScraper:
 
     def scrape_episode(self, url: str) -> list[dict]:
         with get_page() as page:
-            page.goto(url, wait_until="networkidle")
+            page.goto(url, wait_until="domcontentloaded")
+            page.wait_for_selector("div.tab-video iframe.metaframe")
 
             sources = []
 

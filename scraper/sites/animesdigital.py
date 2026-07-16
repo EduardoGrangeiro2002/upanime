@@ -1,7 +1,16 @@
 import re
+from urllib.parse import urlparse, parse_qs
 from browser import get_page
 
 BASE_URL = "https://animesdigital.org"
+
+
+def resolve_embed(embed_url: str) -> str:
+    if "videohls.php" not in embed_url:
+        return embed_url
+    query = parse_qs(urlparse(embed_url).query)
+    direct = query.get("d", [""])[0]
+    return direct or embed_url
 
 
 class AnimesdigitalScraper:
@@ -73,6 +82,6 @@ class AnimesdigitalScraper:
                 if not embed_url:
                     continue
                 label = tab_labels[i] if i < len(tab_labels) else f"Player {i + 1}"
-                sources.append({"label": label, "embed_url": embed_url})
+                sources.append({"label": label, "embed_url": resolve_embed(embed_url)})
 
             return sources

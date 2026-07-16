@@ -7,6 +7,7 @@ from browser import close_browser
 from download.blogger import is_blogger, download_blogger
 from download.ytdlp import download_ytdlp
 from download.progress import update_progress
+from download.validate import is_valid_video
 
 
 def cmd_scrape(url: str):
@@ -42,14 +43,14 @@ def cmd_download(episode_url: str, dest_path: str, download_id: int, db_path: st
         embed_url = source["embed_url"]
         if is_blogger(embed_url):
             ok = download_blogger(embed_url, dest_path, on_progress=on_progress_blogger)
-            if ok:
+            if ok and is_valid_video(dest_path):
                 update_progress(db_path, download_id, 100)
                 return
 
     for source in sources:
         embed_url = source["embed_url"]
         ok = download_ytdlp(embed_url, dest_path, on_progress=on_progress_ytdlp)
-        if ok:
+        if ok and is_valid_video(dest_path):
             update_progress(db_path, download_id, 100)
             return
 

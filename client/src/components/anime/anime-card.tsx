@@ -35,10 +35,10 @@ export function AnimeCard({ anime, isLoading }: AnimeCardProps) {
           alt={anime.title}
           className="h-[180px] w-[120px] shrink-0 rounded-lg object-cover"
         />
-        <div className="flex-1 space-y-2">
+        <div className="flex-1 min-w-0 space-y-2">
           <h2 className="text-xl font-bold">{anime.title}</h2>
           <p className="text-sm text-muted-foreground leading-relaxed">{anime.description}</p>
-          <div className="flex gap-2 pt-1">
+          <div className="flex flex-wrap gap-x-2 gap-y-1 pt-1">
             {anime.seasons.map((s) => (
               <span key={`${s.type}-${s.number}`} className="text-xs text-muted-foreground">
                 {s.label}: {s.episodes.length} eps

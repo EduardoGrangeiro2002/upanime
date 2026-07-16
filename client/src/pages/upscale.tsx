@@ -105,7 +105,7 @@ export function EditionPage() {
       <RecentHistory />
 
       {selectedEpisodeIds.size > 0 && (
-        <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-30 flex items-center gap-3 rounded-2xl glass border border-white/[0.08] px-4 py-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
+        <div className="fixed bottom-24 md:bottom-4 left-1/2 -translate-x-1/2 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl glass border border-white/[0.08] px-4 py-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <span className="text-sm text-muted-foreground whitespace-nowrap">
             {selectedEpisodeIds.size} episódio{selectedEpisodeIds.size !== 1 ? "s" : ""} · {targetHeight}p{interpolate ? " · 60fps" : ""}
           </span>
@@ -617,7 +617,7 @@ function ParamSlider({
         value={value}
         aria-label={label}
         onChange={(e) => onChange(parseFloat(e.target.value))}
-        className="flex-1 h-1.5 rounded-full appearance-none bg-surface-high accent-primary cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        className="flex-1 h-1.5 py-2.5 box-content bg-clip-content rounded-full appearance-none bg-surface-high accent-primary cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       />
       <Badge variant="secondary" className="text-[10px] w-12 text-center tabular-nums">
         {formatParam(value, step)}

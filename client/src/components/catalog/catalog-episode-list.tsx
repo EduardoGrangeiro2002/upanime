@@ -184,12 +184,13 @@ export function CatalogEpisodeList({
               </div>
 
               <div className="flex items-center gap-1 shrink-0 md:opacity-0 md:group-hover/ep:opacity-100 md:group-focus-within/ep:opacity-100 transition-opacity">
-                {ep.upscaledStorageKey && (
+                {ep.upscaledStorageKey && confirmKey !== `ep-${ep.id}` && (
                   confirmKey === `up-${ep.id}` ? (
                     <div className="flex gap-1">
                       <Button
                         variant="destructive"
                         size="sm"
+                        aria-label="Remover upscale"
                         className="h-7 text-xs"
                         disabled={isDeletingUpscaled}
                         onClick={() => {
@@ -197,7 +198,7 @@ export function CatalogEpisodeList({
                           setConfirmKey(null)
                         }}
                       >
-                        Remover upscale
+                        Remover<span className="hidden sm:inline"> upscale</span>
                       </Button>
                       <Button
                         variant="outline"
@@ -212,16 +213,19 @@ export function CatalogEpisodeList({
                     <Button
                       variant="outline"
                       size="sm"
+                      aria-label="Excluir upscale"
+                      data-tooltip="Excluir upscale"
+                      data-tooltip-pos="left"
                       className="h-7 text-xs"
                       disabled={isDeletingUpscaled}
                       onClick={() => setConfirmKey(`up-${ep.id}`)}
                     >
-                      <Sparkles className="h-3.5 w-3.5 mr-1" aria-hidden="true" />
-                      Excluir upscale
+                      <Sparkles className="h-3.5 w-3.5 sm:mr-1" aria-hidden="true" />
+                      <span className="hidden sm:inline">Excluir upscale</span>
                     </Button>
                   )
                 )}
-                {confirmKey === `ep-${ep.id}` ? (
+                {confirmKey !== `up-${ep.id}` && (confirmKey === `ep-${ep.id}` ? (
                   <div className="flex gap-1">
                     <Button
                       variant="destructive"
@@ -256,7 +260,7 @@ export function CatalogEpisodeList({
                   >
                     <Trash2 className="h-3.5 w-3.5" aria-hidden="true" />
                   </Button>
-                )}
+                ))}
               </div>
             </div>
           )

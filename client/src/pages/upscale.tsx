@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react"
-import { Wand2, Library, Settings, ListOrdered, Clock, X, Loader2, TriangleAlert } from "lucide-react"
+import { Wand2, Library, Settings, ListOrdered, Clock, X, Loader2, TriangleAlert, Sparkles } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useCatalog } from "@/hooks/use-catalog"
@@ -308,6 +308,12 @@ function EpisodeSelector({
               {episode.seasonNumber > 0 ? `${episode.seasonNumber}x${episode.number.padStart(2, "0")}` : ""}
             </span>
             <span className="text-sm truncate" title={episode.title}>{episode.title}</span>
+            {episode.upscaledStorageKey && (
+              <Badge variant="success" className="ml-auto shrink-0 gap-1 text-[10px]">
+                <Sparkles className="h-3 w-3" aria-hidden="true" />
+                Upscalado
+              </Badge>
+            )}
           </label>
         ))}
       </div>

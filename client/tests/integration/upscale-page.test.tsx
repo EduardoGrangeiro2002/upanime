@@ -52,6 +52,24 @@ describe("Upscale Page", () => {
     expect(screen.getByRole("slider", { name: "Sensibilidade da detecção" })).toBeInTheDocument()
   })
 
+  it("marks episodes that already have an upscale and leaves the others unmarked", async () => {
+    const user = userEvent.setup()
+    await openUpscalePage(user)
+
+    await user.click(await screen.findByRole("button", { name: /shingeki no kyojin/i }))
+
+    const rows = await screen.findAllByText(/^Episódio \d+$/)
+    expect(rows.length).toBeGreaterThan(1)
+
+    const upscaledRow = rows[0].closest("label")!
+    expect(within(upscaledRow).getByText("Upscalado")).toBeInTheDocument()
+
+    const plainRow = rows[1].closest("label")!
+    expect(within(plainRow).queryByText("Upscalado")).not.toBeInTheDocument()
+
+    expect(screen.getAllByText("Upscalado")).toHaveLength(1)
+  })
+
   it("shows the action bar only after selecting episodes and starts the job", async () => {
     const user = userEvent.setup()
     await openUpscalePage(user)

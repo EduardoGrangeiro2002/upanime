@@ -5,6 +5,13 @@ from pydantic import BaseModel, ConfigDict, Field, HttpUrl, field_validator
 VALID_TARGET_HEIGHTS = {1080, 1440, 2160}
 
 
+class VariantSpec(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    height: int
+    storage_key: str = Field(alias="storageKey")
+
+
 class WorkerJobRequest(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
@@ -23,6 +30,7 @@ class WorkerJobRequest(BaseModel):
     effects_strength: float | None = Field(default=None, alias="effectsStrength")
     effects_sensitivity: float | None = Field(default=None, alias="effectsSensitivity")
     skip_upscale: bool = Field(default=False, alias="skipUpscale")
+    variants: list[VariantSpec] = Field(default_factory=list)
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
     @field_validator("target_height")

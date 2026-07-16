@@ -8,6 +8,7 @@ from typing import Protocol
 import requests
 
 from .callbacks import CallbackClient, build_failure_callback, build_success_callback
+from .downscale import downscale_video
 from .models import WorkerJobRequest
 
 
@@ -45,6 +46,7 @@ class UpscaleJobRunner:
         temp_root: Path,
         request_timeout_seconds: int,
         force_interpolate: bool = False,
+        encode_preset: str = "medium",
     ) -> None:
         self._pipeline = pipeline
         self._storage = storage
@@ -52,8 +54,9 @@ class UpscaleJobRunner:
         self._temp_root = temp_root
         self._request_timeout_seconds = request_timeout_seconds
         self._force_interpolate = force_interpolate
+        self._encode_preset = encode_preset
 
-    def run(self, job: WorkerJobRequest) -> None:
+    def run(self, job: WorkerJobRequest) -> list[int]:
         work_dir = self._temp_root / str(job.job_id)
         input_path = work_dir / "input.mp4"
         output_path = work_dir / "output.mp4"
@@ -81,14 +84,32 @@ class UpscaleJobRunner:
             self._storage.upload_file(output_path, job.result_storage_key)
             self._ensure_uploaded(job.result_storage_key)
             self._upload_dataset(dataset_dir, job.job_id)
+            uploaded_heights = self._process_variants(job, output_path, work_dir)
         except Exception as exc:
             logging.exception("worker job %s failed", job.job_id)
             self._notify_failure(job, str(exc))
-            return
+            return []
         finally:
             self._cleanup(work_dir)
 
         self._notify_success(job)
+        return uploaded_heights
+
+    def _process_variants(self, job: WorkerJobRequest, output_path: Path, work_dir: Path) -> list[int]:
+        if job.skip_upscale:
+            return []
+        uploaded: list[int] = []
+        for variant in job.variants:
+            variant_path = work_dir / f"variant_{variant.height}p.mp4"
+            try:
+                downscale_video(output_path, variant_path, variant.height, self._encode_preset)
+                self._storage.upload_file(variant_path, variant.storage_key)
+                self._ensure_uploaded(variant.storage_key)
+            except Exception:
+                logging.exception("variant %dp failed for job %d (main result unaffected)", variant.height, job.job_id)
+                continue
+            uploaded.append(variant.height)
+        return uploaded
 
     def _prepare_work_dir(self, work_dir: Path) -> None:
         if work_dir.exists():

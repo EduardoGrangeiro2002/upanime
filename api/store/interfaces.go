@@ -41,6 +41,7 @@ type EpisodeStore interface {
 	Delete(ctx context.Context, id int64) error
 	UpdateStorageKey(ctx context.Context, id int64, key string) error
 	UpdateUpscaledStorageKey(ctx context.Context, id int64, key string) error
+	UpdateUpscaledVariants(ctx context.Context, id int64, variants []model.EpisodeVariant) error
 }
 
 type ScraperStore interface {

@@ -3,6 +3,8 @@ package service
 import (
 	"context"
 	"log"
+	"strconv"
+	"strings"
 	"time"
 
 	"upanime/api/model"
@@ -95,7 +97,28 @@ func (p *RunPodPoller) handleCompleted(ctx context.Context, job model.UpscaleJob
 	if resultKey != "" {
 		_ = p.jobs.UpdateResult(ctx, job.ID.Int64(), resultKey)
 		_ = p.episodes.UpdateUpscaledStorageKey(ctx, job.EpisodeID.Int64(), resultKey)
+		p.saveVariants(ctx, job, resultKey, status.Output["variantHeights"])
 	}
 
 	_ = p.jobs.UpdateStatus(ctx, job.ID.Int64(), "completed", "")
+}
+
+func (p *RunPodPoller) saveVariants(ctx context.Context, job model.UpscaleJob, resultKey string, rawHeights string) {
+	if job.SkipUpscale {
+		return
+	}
+	variants := []model.EpisodeVariant{{Height: job.TargetHeight, StorageKey: resultKey}}
+	for _, part := range strings.Split(rawHeights, ",") {
+		height, err := strconv.Atoi(strings.TrimSpace(part))
+		if err != nil {
+			continue
+		}
+		variants = append(variants, model.EpisodeVariant{
+			Height:     height,
+			StorageKey: model.BuildVariantKey(resultKey, height),
+		})
+	}
+	if err := p.episodes.UpdateUpscaledVariants(ctx, job.EpisodeID.Int64(), variants); err != nil {
+		log.Printf("poller: save variants for episode %d: %v", job.EpisodeID.Int64(), err)
+	}
 }

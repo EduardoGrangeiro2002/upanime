@@ -42,6 +42,7 @@ def _build_runner() -> UpscaleJobRunner:
         temp_root=settings.temp_root,
         request_timeout_seconds=settings.request_timeout_seconds,
         force_interpolate=settings.force_interpolate,
+        encode_preset=settings.encode_preset,
     )
 
 
@@ -59,8 +60,12 @@ def _get_runner() -> UpscaleJobRunner:
 def handler(job: dict) -> dict:
     job_input = job["input"]
     request = WorkerJobRequest(**job_input)
-    _get_runner().run(request)
-    return {"status": "completed", "resultStorageKey": request.result_storage_key}
+    uploaded_heights = _get_runner().run(request)
+    return {
+        "status": "completed",
+        "resultStorageKey": request.result_storage_key,
+        "variantHeights": ",".join(str(h) for h in uploaded_heights),
+    }
 
 
 if __name__ == "__main__":

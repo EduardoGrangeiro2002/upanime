@@ -316,7 +316,7 @@ func genresFromJSON(raw string) []string {
 
 func (s *SQLiteAnimeStore) loadEpisodes(ctx context.Context, seasonID int64, seasonNumber int) ([]model.Episode, error) {
 	rows, err := s.db.QueryContext(ctx,
-		"SELECT id, season_id, anime_id, title, number, url, type, storage_key, upscaled_storage_key FROM episodes WHERE season_id = ? ORDER BY CAST(number AS INTEGER), number",
+		"SELECT id, season_id, anime_id, title, number, url, type, storage_key, upscaled_storage_key, upscaled_variants FROM episodes WHERE season_id = ? ORDER BY CAST(number AS INTEGER), number",
 		seasonID,
 	)
 	if err != nil {
@@ -328,9 +328,11 @@ func (s *SQLiteAnimeStore) loadEpisodes(ctx context.Context, seasonID int64, sea
 	for rows.Next() {
 		var ep model.Episode
 		var id, epSeasonID, epAnimeID int64
-		if err := rows.Scan(&id, &epSeasonID, &epAnimeID, &ep.Title, &ep.Number, &ep.URL, &ep.Type, &ep.StorageKey, &ep.UpscaledStorageKey); err != nil {
+		var rawVariants string
+		if err := rows.Scan(&id, &epSeasonID, &epAnimeID, &ep.Title, &ep.Number, &ep.URL, &ep.Type, &ep.StorageKey, &ep.UpscaledStorageKey, &rawVariants); err != nil {
 			return nil, fmt.Errorf("scan episode: %w", err)
 		}
+		ep.UpscaledVariants = unmarshalVariants(rawVariants)
 		ep.ID = model.StringID(id)
 		ep.SeasonID = epSeasonID
 		ep.AnimeID = epAnimeID

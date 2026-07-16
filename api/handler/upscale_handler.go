@@ -132,6 +132,7 @@ func (h *EditionHandler) dispatchJob(job model.UpscaleJob) {
 		SourceURL:        sourceURL,
 		SourceStorageKey: job.SourceStorageKey,
 		ResultStorageKey: job.ResultStorageKey,
+		Variants:         buildWorkerVariants(job),
 		TargetHeight:     job.TargetHeight,
 		BatchSize:        job.BatchSize,
 		Sharpen:          job.Sharpen,
@@ -192,6 +193,21 @@ func buildEpisodeMap(anime *model.Anime) map[int64]model.Episode {
 		}
 	}
 	return result
+}
+
+func buildWorkerVariants(job model.UpscaleJob) []service.WorkerVariant {
+	if job.SkipUpscale {
+		return nil
+	}
+	heights := model.VariantHeights(job.TargetHeight)
+	variants := make([]service.WorkerVariant, 0, len(heights))
+	for _, h := range heights {
+		variants = append(variants, service.WorkerVariant{
+			Height:     h,
+			StorageKey: model.BuildVariantKey(job.ResultStorageKey, h),
+		})
+	}
+	return variants
 }
 
 func buildUpscaledKey(sourceKey string) string {

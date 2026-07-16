@@ -1,5 +1,35 @@
 package model
 
+import (
+	"fmt"
+	"path/filepath"
+	"strings"
+)
+
+type EpisodeVariant struct {
+	Height     int    `json:"height"`
+	StorageKey string `json:"storageKey"`
+}
+
+var variantLadder = []int{1440, 1080}
+
+func VariantHeights(targetHeight int) []int {
+	heights := make([]int, 0, len(variantLadder))
+	for _, h := range variantLadder {
+		if h >= targetHeight {
+			continue
+		}
+		heights = append(heights, h)
+	}
+	return heights
+}
+
+func BuildVariantKey(resultKey string, height int) string {
+	ext := filepath.Ext(resultKey)
+	base := strings.TrimSuffix(resultKey, ext)
+	return fmt.Sprintf("%s_%dp%s", base, height, ext)
+}
+
 type UpscaleJob struct {
 	ID               StringID `json:"id"`
 	EpisodeID        StringID `json:"episodeId"`

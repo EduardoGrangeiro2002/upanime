@@ -58,14 +58,15 @@ type Season struct {
 }
 
 type Episode struct {
-	ID                 StringID `json:"id"`
-	SeasonID           int64    `json:"-"`
-	AnimeID            int64    `json:"-"`
-	Title              string   `json:"title"`
-	Number             string   `json:"number"`
-	SeasonNumber       int      `json:"seasonNumber"`
-	URL                string   `json:"url"`
-	Type               string   `json:"type"`
-	StorageKey         string   `json:"storageKey,omitempty"`
-	UpscaledStorageKey string   `json:"upscaledStorageKey,omitempty"`
+	ID                 StringID         `json:"id"`
+	SeasonID           int64            `json:"-"`
+	AnimeID            int64            `json:"-"`
+	Title              string           `json:"title"`
+	Number             string           `json:"number"`
+	SeasonNumber       int              `json:"seasonNumber"`
+	URL                string           `json:"url"`
+	Type               string           `json:"type"`
+	StorageKey         string           `json:"storageKey,omitempty"`
+	UpscaledStorageKey string           `json:"upscaledStorageKey,omitempty"`
+	UpscaledVariants   []EpisodeVariant `json:"upscaledVariants,omitempty"`
 }

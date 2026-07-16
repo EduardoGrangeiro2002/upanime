@@ -1,6 +1,58 @@
 package handler
 
-import "testing"
+import (
+	"testing"
+
+	"upanime/api/model"
+)
+
+func TestBuildWorkerVariants(t *testing.T) {
+	t.Parallel()
+
+	job := model.UpscaleJob{
+		TargetHeight:     2160,
+		ResultStorageKey: "animes/naruto/ep_1_upscaled.mp4",
+	}
+
+	variants := buildWorkerVariants(job)
+
+	if len(variants) != 2 {
+		t.Fatalf("expected 2 variants, got %d", len(variants))
+	}
+	if variants[0].Height != 1440 || variants[0].StorageKey != "animes/naruto/ep_1_upscaled_1440p.mp4" {
+		t.Fatalf("unexpected first variant: %+v", variants[0])
+	}
+	if variants[1].Height != 1080 || variants[1].StorageKey != "animes/naruto/ep_1_upscaled_1080p.mp4" {
+		t.Fatalf("unexpected second variant: %+v", variants[1])
+	}
+}
+
+func TestBuildWorkerVariantsFor1080IsEmpty(t *testing.T) {
+	t.Parallel()
+
+	job := model.UpscaleJob{
+		TargetHeight:     1080,
+		ResultStorageKey: "animes/naruto/ep_1_upscaled.mp4",
+	}
+
+	if got := buildWorkerVariants(job); len(got) != 0 {
+		t.Fatalf("expected no variants, got %+v", got)
+	}
+}
+
+func TestBuildWorkerVariantsSkipUpscale(t *testing.T) {
+	t.Parallel()
+
+	job := model.UpscaleJob{
+		TargetHeight:     2160,
+		ResultStorageKey: "animes/naruto/ep_1_upscaled.mp4",
+		SkipUpscale:      true,
+	}
+
+	if got := buildWorkerVariants(job); got != nil {
+		t.Fatalf("expected nil variants, got %+v", got)
+	}
+}
 
 func TestBuildUpscaledKey(t *testing.T) {
 	t.Parallel()

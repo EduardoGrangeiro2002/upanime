@@ -7,11 +7,13 @@ from upanime_worker.models import WorkerJobRequest
 
 
 class RunnerSpy:
-    def __init__(self) -> None:
+    def __init__(self, uploaded_heights: list[int] | None = None) -> None:
         self.jobs: list[WorkerJobRequest] = []
+        self.uploaded_heights = uploaded_heights or []
 
-    def run(self, job: WorkerJobRequest) -> None:
+    def run(self, job: WorkerJobRequest) -> list[int]:
         self.jobs.append(job)
+        return self.uploaded_heights
 
 
 def _make_job_input(**overrides) -> dict:
@@ -41,10 +43,39 @@ def test_handler_returns_completed_on_success(monkeypatch):
     assert result == {
         "status": "completed",
         "resultStorageKey": "animes/test/source_upscaled.mp4",
+        "variantHeights": "",
     }
     assert len(spy.jobs) == 1
     assert spy.jobs[0].job_id == 1
     assert spy.jobs[0].target_height == 1080
+
+
+def test_handler_returns_uploaded_variant_heights(monkeypatch):
+    spy = RunnerSpy(uploaded_heights=[1440, 1080])
+    _patch_runner(monkeypatch, spy)
+
+    result = handler({"input": _make_job_input(targetHeight=2160)})
+
+    assert result["variantHeights"] == "1440,1080"
+
+
+def test_job_request_parses_variants():
+    job = WorkerJobRequest(**_make_job_input(
+        targetHeight=2160,
+        variants=[
+            {"height": 1440, "storageKey": "animes/test/source_upscaled_1440p.mp4"},
+            {"height": 1080, "storageKey": "animes/test/source_upscaled_1080p.mp4"},
+        ],
+    ))
+
+    assert [v.height for v in job.variants] == [1440, 1080]
+    assert job.variants[0].storage_key == "animes/test/source_upscaled_1440p.mp4"
+
+
+def test_job_request_defaults_to_no_variants():
+    job = WorkerJobRequest(**_make_job_input())
+
+    assert job.variants == []
 
 
 def test_handler_delegates_to_runner_with_correct_fields(monkeypatch):

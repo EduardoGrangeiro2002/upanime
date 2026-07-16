@@ -54,9 +54,9 @@ class EffectTagger:
                     self._effect_names.append(row["name"])
             logging.info("effect tagger loaded: %d effect tags mapped", len(self._effect_indices))
 
-    def shot_effect_tags(self, frame_bgr: object) -> list[str]:
+    def shot_effect_scores(self, frame_bgr: object) -> tuple[list[str], float]:
         if not self._available:
-            return ["gate-off"]
+            return ["gate-off"], 1.0
         self._ensure_session()
 
         import cv2
@@ -75,10 +75,16 @@ class EffectTagger:
         probs = self._session.run(None, {input_name: batch})[0][0]
 
         found = []
+        max_prob = 0.0
         for index, name in zip(self._effect_indices, self._effect_names):
-            if float(probs[index]) >= self._threshold:
+            prob = float(probs[index])
+            max_prob = max(max_prob, prob)
+            if prob >= self._threshold:
                 found.append(name)
-        return found
+        return found, max_prob
+
+    def shot_effect_tags(self, frame_bgr: object) -> list[str]:
+        return self.shot_effect_scores(frame_bgr)[0]
 
     def shot_has_effect(self, frame_bgr: object) -> bool:
         return len(self.shot_effect_tags(frame_bgr)) > 0

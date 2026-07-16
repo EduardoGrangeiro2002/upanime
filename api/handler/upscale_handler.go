@@ -95,6 +95,7 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 			Effects:          req.Effects,
 			EffectsStrength:  req.EffectsStrength,
 			EffectsSens:      req.EffectsSens,
+			SkipUpscale:      req.SkipUpscale,
 			SourceStorageKey: episode.StorageKey,
 			ResultStorageKey: buildUpscaledKey(episode.StorageKey),
 			AnimeTitle:       anime.Title,
@@ -141,6 +142,7 @@ func (h *EditionHandler) dispatchJob(job model.UpscaleJob) {
 		Effects:          job.Effects,
 		EffectsStrength:  job.EffectsStrength,
 		EffectsSens:      job.EffectsSens,
+		SkipUpscale:      job.SkipUpscale,
 	}
 
 	runpodJobID, err := h.worker.Enqueue(ctx, req)

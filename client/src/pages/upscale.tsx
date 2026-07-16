@@ -20,6 +20,7 @@ export function EditionPage() {
   const [panRatio, setPanRatio] = useState(0.6)
   const [effects, setEffects] = useState(false)
   const [effectsParams, setEffectsParams] = useState({ strength: 1.0, sensitivity: 1.0 })
+  const [skipUpscale, setSkipUpscale] = useState(false)
   const [encodeParams, setEncodeParams] = useState<EncodeParams>({ batchSize: 2, sharpen: 0.5, saturation: 1.20, contrast: 1.05 })
   const startUpscale = useStartUpscale()
 
@@ -47,7 +48,7 @@ export function EditionPage() {
         interpolate,
         ...(interpolate ? { panRatio } : {}),
         effects,
-        ...(effects ? { effectsStrength: effectsParams.strength, effectsSensitivity: effectsParams.sensitivity } : {}),
+        ...(effects ? { effectsStrength: effectsParams.strength, effectsSensitivity: effectsParams.sensitivity, skipUpscale } : {}),
       },
       {
         onSuccess: () => {
@@ -95,6 +96,8 @@ export function EditionPage() {
         onEffectsChange={setEffects}
         effectsParams={effectsParams}
         onEffectsParamsChange={setEffectsParams}
+        skipUpscale={skipUpscale}
+        onSkipUpscaleChange={setSkipUpscale}
         encodeParams={encodeParams}
         onEncodeParamsChange={setEncodeParams}
       />
@@ -363,6 +366,8 @@ function ProcessingConfig({
   onEffectsChange,
   effectsParams,
   onEffectsParamsChange,
+  skipUpscale,
+  onSkipUpscaleChange,
   encodeParams,
   onEncodeParamsChange,
 }: {
@@ -376,6 +381,8 @@ function ProcessingConfig({
   onEffectsChange: (value: boolean) => void
   effectsParams: { strength: number; sensitivity: number }
   onEffectsParamsChange: (params: { strength: number; sensitivity: number }) => void
+  skipUpscale: boolean
+  onSkipUpscaleChange: (value: boolean) => void
   encodeParams: EncodeParams
   onEncodeParamsChange: (params: EncodeParams) => void
 }) {
@@ -494,6 +501,24 @@ function ProcessingConfig({
                 step={0.05}
                 onChange={(v) => onEffectsParamsChange({ ...effectsParams, sensitivity: v })}
               />
+              <div className="flex items-center justify-between">
+                <span
+                  className="text-sm font-medium underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 cursor-help"
+                  data-tooltip="Modo debug: pula o upscale (Real-ESRGAN) e renderiza na resolução original só com a composição de efeitos — rápido e barato para conferir onde a detecção dispara."
+                  tabIndex={0}
+                >
+                  Prévia sem upscale
+                </span>
+                <Button
+                  type="button"
+                  size="sm"
+                  variant={skipUpscale ? "default" : "outline"}
+                  aria-pressed={skipUpscale}
+                  onClick={() => onSkipUpscaleChange(!skipUpscale)}
+                >
+                  {skipUpscale ? "Ativada" : "Desativada"}
+                </Button>
+              </div>
             </>
           )}
         </div>

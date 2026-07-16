@@ -141,4 +141,5 @@ export interface UpscaleRequest {
   effects?: boolean
   effectsStrength?: number
   effectsSensitivity?: number
+  skipUpscale?: boolean
 }

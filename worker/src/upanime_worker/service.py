@@ -26,6 +26,7 @@ class VideoPipeline(Protocol):
         effects: bool = False,
         effects_strength: float | None = None,
         effects_sensitivity: float | None = None,
+        skip_upscale: bool = False,
         dataset_dir: Path | None = None,
     ) -> None: ...
 
@@ -74,6 +75,7 @@ class UpscaleJobRunner:
                 effects=job.effects,
                 effects_strength=job.effects_strength,
                 effects_sensitivity=job.effects_sensitivity,
+                skip_upscale=job.skip_upscale,
                 dataset_dir=dataset_dir,
             )
             self._storage.upload_file(output_path, job.result_storage_key)

@@ -112,6 +112,80 @@ def test_upscale_job_runner_success(tmp_path):
         server.shutdown()
 
 
+def test_upscale_job_runner_passes_effects_debug_flags(tmp_path):
+    CallbackServerHandler.callbacks = []
+    server, base_url = start_test_server()
+
+    try:
+        storage = FakeStorage()
+        pipeline = CopyPipeline()
+        runner = UpscaleJobRunner(
+            pipeline=pipeline,
+            storage=storage,
+            callbacks=CallbackClient(timeout_seconds=5),
+            temp_root=tmp_path,
+            request_timeout_seconds=5,
+        )
+        job = WorkerJobRequest(
+            jobId=14,
+            sourceUrl=f"{base_url}/video.mp4",
+            sourceStorageKey="animes/test/source.mp4",
+            resultStorageKey="animes/test/source_upscaled.mp4",
+            effects=True,
+            skipUpscale=True,
+            callbackUrl=f"{base_url}/callback",
+        )
+
+        runner.run(job)
+
+        assert storage.exists("animes/test/source_upscaled.mp4")
+        assert pipeline.last_kwargs["effects"] is True
+        assert pipeline.last_kwargs["skip_upscale"] is True
+        assert pipeline.last_kwargs["dataset_dir"] == tmp_path / "14" / "dataset"
+    finally:
+        server.shutdown()
+
+
+def test_upscale_job_runner_uploads_effects_log_with_dataset(tmp_path):
+    CallbackServerHandler.callbacks = []
+    server, base_url = start_test_server()
+
+    class LogWritingPipeline(CopyPipeline):
+        def process(self, input_path: Path, output_path: Path, **kwargs) -> None:
+            super().process(input_path, output_path, **kwargs)
+            dataset_dir = kwargs["dataset_dir"]
+            dataset_dir.mkdir(parents=True, exist_ok=True)
+            (dataset_dir / "effects_log.json").write_text(
+                json.dumps({"mode": "stream", "fps": 24.0, "entries": []})
+            )
+
+    try:
+        storage = FakeStorage()
+        runner = UpscaleJobRunner(
+            pipeline=LogWritingPipeline(),
+            storage=storage,
+            callbacks=CallbackClient(timeout_seconds=5),
+            temp_root=tmp_path,
+            request_timeout_seconds=5,
+        )
+        job = WorkerJobRequest(
+            jobId=15,
+            sourceUrl=f"{base_url}/video.mp4",
+            sourceStorageKey="animes/test/source.mp4",
+            resultStorageKey="animes/test/source_upscaled.mp4",
+            effects=True,
+            callbackUrl=f"{base_url}/callback",
+        )
+
+        runner.run(job)
+
+        assert storage.exists("datasets/effects/15/effects_log.json")
+        payload = json.loads(storage.files["datasets/effects/15/effects_log.json"])
+        assert payload["mode"] == "stream"
+    finally:
+        server.shutdown()
+
+
 def test_upscale_job_runner_failure(tmp_path):
     CallbackServerHandler.callbacks = []
     server, base_url = start_test_server()

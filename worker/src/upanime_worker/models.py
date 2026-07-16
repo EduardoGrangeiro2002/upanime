@@ -22,6 +22,7 @@ class WorkerJobRequest(BaseModel):
     effects: bool = Field(default=False)
     effects_strength: float | None = Field(default=None, alias="effectsStrength")
     effects_sensitivity: float | None = Field(default=None, alias="effectsSensitivity")
+    skip_upscale: bool = Field(default=False, alias="skipUpscale")
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
     @field_validator("target_height")

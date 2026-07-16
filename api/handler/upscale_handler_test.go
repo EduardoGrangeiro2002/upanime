@@ -102,6 +102,8 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 		TargetHeight: 2160,
 		Interpolate:  true,
 		PanRatio:     &panRatio,
+		Effects:      true,
+		SkipUpscale:  true,
 	})
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
@@ -145,6 +147,12 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 		}
 		if queuedJob.PanRatio == nil || *queuedJob.PanRatio != 0.75 {
 			t.Errorf("expected pan ratio 0.75 to reach the worker job, got %v", queuedJob.PanRatio)
+		}
+		if !queuedJob.Effects {
+			t.Error("expected effects to reach the worker job")
+		}
+		if !queuedJob.SkipUpscale {
+			t.Error("expected skipUpscale to reach the worker job")
 		}
 	case <-time.After(2 * time.Second):
 		t.Fatal("expected job to be queued in worker client")

@@ -1,0 +1,263 @@
+[
+  {
+    "frame": "fn_beam_op_0043.jpg",
+    "dino_s": 2.24,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "fn_blast_tail_1407.jpg",
+    "dino_s": 1.97,
+    "sam_s": 2.66,
+    "detections": [
+      {
+        "label": "glowing magic fire explosion",
+        "score": 0.249,
+        "mask_area_pct": 61.51
+      },
+      {
+        "label": "",
+        "score": 0.174,
+        "mask_area_pct": 0.92
+      },
+      {
+        "label": "",
+        "score": 0.165,
+        "mask_area_pct": 73.3
+      }
+    ]
+  },
+  {
+    "frame": "fn_brilho_escuro_0451.jpg",
+    "dino_s": 2.44,
+    "sam_s": 1.99,
+    "detections": [
+      {
+        "label": "glowing orb",
+        "score": 0.283,
+        "mask_area_pct": 5.56
+      },
+      {
+        "label": "glowing orb",
+        "score": 0.236,
+        "mask_area_pct": 8.13
+      },
+      {
+        "label": "glowing orb magic",
+        "score": 0.246,
+        "mask_area_pct": 8.77
+      },
+      {
+        "label": "",
+        "score": 0.155,
+        "mask_area_pct": 8.79
+      },
+      {
+        "label": "",
+        "score": 0.178,
+        "mask_area_pct": 2.14
+      },
+      {
+        "label": "",
+        "score": 0.158,
+        "mask_area_pct": 6.67
+      },
+      {
+        "label": "magic",
+        "score": 0.207,
+        "mask_area_pct": 8.8
+      }
+    ]
+  },
+  {
+    "frame": "neg_dialogo_0640.jpg",
+    "dino_s": 2.54,
+    "sam_s": 1.9,
+    "detections": [
+      {
+        "label": "",
+        "score": 0.152,
+        "mask_area_pct": 48.25
+      }
+    ]
+  },
+  {
+    "frame": "neg_floresta_1010.jpg",
+    "dino_s": 2.66,
+    "sam_s": 1.29,
+    "detections": [
+      {
+        "label": "",
+        "score": 0.183,
+        "mask_area_pct": 22.47
+      }
+    ]
+  },
+  {
+    "frame": "tp_aura_demonio_0412.jpg",
+    "dino_s": 2.09,
+    "sam_s": 1.38,
+    "detections": [
+      {
+        "label": "glowing light beam",
+        "score": 0.321,
+        "mask_area_pct": 7.86
+      },
+      {
+        "label": "ball",
+        "score": 0.255,
+        "mask_area_pct": 0.17
+      },
+      {
+        "label": "fire explosion",
+        "score": 0.23,
+        "mask_area_pct": 98.64
+      },
+      {
+        "label": "",
+        "score": 0.154,
+        "mask_area_pct": 8.02
+      },
+      {
+        "label": "",
+        "score": 0.184,
+        "mask_area_pct": 4.86
+      }
+    ]
+  },
+  {
+    "frame": "tp_aura_flare_1818.jpg",
+    "dino_s": 2.05,
+    "sam_s": 2.18,
+    "detections": [
+      {
+        "label": "ball",
+        "score": 0.225,
+        "mask_area_pct": 2.71
+      },
+      {
+        "label": "fire",
+        "score": 0.254,
+        "mask_area_pct": 24.11
+      },
+      {
+        "label": "",
+        "score": 0.183,
+        "mask_area_pct": 85.9
+      },
+      {
+        "label": "",
+        "score": 0.188,
+        "mask_area_pct": 7.76
+      },
+      {
+        "label": "",
+        "score": 0.169,
+        "mask_area_pct": 25.67
+      }
+    ]
+  },
+  {
+    "frame": "tp_energyball_0113.jpg",
+    "dino_s": 2.65,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "tp_fire_taverna_0135.jpg",
+    "dino_s": 2.28,
+    "sam_s": 1.38,
+    "detections": [
+      {
+        "label": "",
+        "score": 0.161,
+        "mask_area_pct": 9.23
+      },
+      {
+        "label": "",
+        "score": 0.164,
+        "mask_area_pct": 2.76
+      }
+    ]
+  },
+  {
+    "frame": "tp_fire_vila_0141.jpg",
+    "dino_s": 2.28,
+    "sam_s": 1.61,
+    "detections": [
+      {
+        "label": "fire burning fire",
+        "score": 0.493,
+        "mask_area_pct": 1.67
+      },
+      {
+        "label": "glowing orb magic",
+        "score": 0.256,
+        "mask_area_pct": 1.8
+      },
+      {
+        "label": "fire",
+        "score": 0.287,
+        "mask_area_pct": 11.7
+      },
+      {
+        "label": "orb",
+        "score": 0.201,
+        "mask_area_pct": 0.4
+      },
+      {
+        "label": "",
+        "score": 0.187,
+        "mask_area_pct": 1.01
+      },
+      {
+        "label": "",
+        "score": 0.157,
+        "mask_area_pct": 0.72
+      },
+      {
+        "label": "",
+        "score": 0.194,
+        "mask_area_pct": 1.53
+      },
+      {
+        "label": "",
+        "score": 0.159,
+        "mask_area_pct": 4.92
+      },
+      {
+        "label": "",
+        "score": 0.158,
+        "mask_area_pct": 2.15
+      },
+      {
+        "label": "magic",
+        "score": 0.21,
+        "mask_area_pct": 2.28
+      },
+      {
+        "label": "",
+        "score": 0.164,
+        "mask_area_pct": 2.16
+      }
+    ]
+  },
+  {
+    "frame": "tp_lightning_0054.jpg",
+    "dino_s": 1.98,
+    "sam_s": 1.26,
+    "detections": [
+      {
+        "label": "",
+        "score": 0.194,
+        "mask_area_pct": 0.32
+      }
+    ]
+  },
+  {
+    "frame": "tp_orbe_zolf_2003.jpg",
+    "dino_s": 2.36,
+    "sam_s": 0.0,
+    "detections": []
+  }
+]

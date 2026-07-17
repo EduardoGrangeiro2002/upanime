@@ -79,3 +79,7 @@ catalog-migration.sql
 docs/audits/**/*.jpg
 docs/audits/**/*.png
 docs/audits/**/*.mp4
+ml/.venv/
+ml/checkpoints/
+ml/probe-frames/
+ml/probe-out/

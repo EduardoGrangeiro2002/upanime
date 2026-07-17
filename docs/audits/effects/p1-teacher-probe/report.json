@@ -1,0 +1,129 @@
+[
+  {
+    "frame": "fn_beam_op_0043.jpg",
+    "dino_s": 4.19,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "fn_blast_tail_1407.jpg",
+    "dino_s": 2.38,
+    "sam_s": 3.03,
+    "detections": [
+      {
+        "label": "fire",
+        "score": 0.308,
+        "mask_area_pct": 65.04
+      },
+      {
+        "label": "flames explosion",
+        "score": 0.28,
+        "mask_area_pct": 67.55
+      }
+    ]
+  },
+  {
+    "frame": "fn_brilho_escuro_0451.jpg",
+    "dino_s": 2.66,
+    "sam_s": 1.85,
+    "detections": [
+      {
+        "label": "magic aura",
+        "score": 0.386,
+        "mask_area_pct": 8.74
+      },
+      {
+        "label": "magic aura",
+        "score": 0.265,
+        "mask_area_pct": 7.84
+      }
+    ]
+  },
+  {
+    "frame": "neg_dialogo_0640.jpg",
+    "dino_s": 2.37,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "neg_floresta_1010.jpg",
+    "dino_s": 1.93,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "tp_aura_demonio_0412.jpg",
+    "dino_s": 1.87,
+    "sam_s": 1.22,
+    "detections": [
+      {
+        "label": "fire aura",
+        "score": 0.286,
+        "mask_area_pct": 98.65
+      },
+      {
+        "label": "explosion magic",
+        "score": 0.301,
+        "mask_area_pct": 98.64
+      }
+    ]
+  },
+  {
+    "frame": "tp_aura_flare_1818.jpg",
+    "dino_s": 2.37,
+    "sam_s": 1.33,
+    "detections": [
+      {
+        "label": "fire",
+        "score": 0.265,
+        "mask_area_pct": 26.58
+      },
+      {
+        "label": "fire",
+        "score": 0.253,
+        "mask_area_pct": 85.96
+      }
+    ]
+  },
+  {
+    "frame": "tp_energyball_0113.jpg",
+    "dino_s": 1.98,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "tp_fire_taverna_0135.jpg",
+    "dino_s": 2.09,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "tp_fire_vila_0141.jpg",
+    "dino_s": 1.95,
+    "sam_s": 1.28,
+    "detections": [
+      {
+        "label": "fire",
+        "score": 0.634,
+        "mask_area_pct": 1.68
+      },
+      {
+        "label": "flames explosion",
+        "score": 0.443,
+        "mask_area_pct": 1.68
+      }
+    ]
+  },
+  {
+    "frame": "tp_lightning_0054.jpg",
+    "dino_s": 1.96,
+    "sam_s": 0.0,
+    "detections": []
+  },
+  {
+    "frame": "tp_orbe_zolf_2003.jpg",
+    "dino_s": 1.91,
+    "sam_s": 0.0,
+    "detections": []
+  }
+]

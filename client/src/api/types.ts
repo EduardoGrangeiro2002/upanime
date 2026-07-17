@@ -128,6 +128,37 @@ export interface EncodeParams {
   contrast: number
 }
 
+export type DatasetVerdict = "approved" | "rejected" | "needs_edit"
+
+export interface DatasetSample {
+  id: string
+  source: string
+  class: string
+  frameUrl: string
+  maskUrl: string
+  animeTitle: string
+  episode: string
+  timestampS: number
+  teacherProb: number
+  status: string
+  createdAt: string
+}
+
+export interface DatasetClassStat {
+  class: string
+  status: string
+  count: number
+}
+
+export interface DatasetStats {
+  total: number
+  pending: number
+  approved: number
+  rejected: number
+  needsEdit: number
+  byClass: DatasetClassStat[]
+}
+
 export interface UpscaleRequest {
   animeId: string
   episodeIds: string[]

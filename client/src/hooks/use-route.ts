@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react"
 
-export type PageRoute = "downloads" | "catalog" | "upscale" | "compare" | "login" | "invites"
+export type PageRoute = "downloads" | "catalog" | "upscale" | "compare" | "login" | "invites" | "dataset"
 
 const PATH_TO_PAGE: Record<string, PageRoute> = {
   downloads: "downloads",
@@ -9,6 +9,7 @@ const PATH_TO_PAGE: Record<string, PageRoute> = {
   comparar: "compare",
   login: "login",
   convites: "invites",
+  dataset: "dataset",
 }
 
 const PAGE_TO_PATH: Record<PageRoute, string> = {
@@ -18,6 +19,7 @@ const PAGE_TO_PATH: Record<PageRoute, string> = {
   compare: "comparar",
   login: "login",
   invites: "convites",
+  dataset: "dataset",
 }
 
 export interface Route {

@@ -81,6 +81,21 @@ func main() {
 	thumbnailService := service.NewThumbnailService(fs, nil)
 	thumbnailHandler := handler.NewThumbnailHandler(episodeStore, thumbnailService, fs)
 
+	mlDatasetPath := cfg.MLDatasetPath
+	if mlDatasetPath == "" {
+		mlDatasetPath = filepath.Join(filepath.Dir(cfg.DatabasePath), "ml_dataset.db")
+	}
+	mlDatabase, err := db.Open(mlDatasetPath)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer mlDatabase.Close()
+	datasetStore, err := store.NewSQLiteDatasetStore(mlDatabase)
+	if err != nil {
+		log.Fatal(err)
+	}
+	datasetHandler := handler.NewDatasetHandler(datasetStore, fs)
+
 	poller := service.NewRunPodPoller(upscaleStore, episodeStore, workerClient, 10*time.Second)
 	poller.Start()
 	defer poller.Stop()
@@ -159,6 +174,11 @@ func main() {
 		pr.Post("/api/upscale", editionHandler.Create)
 		pr.Get("/api/upscale", editionHandler.List)
 		pr.Delete("/api/upscale/{id}", editionHandler.Delete)
+
+		pr.Post("/api/dataset/samples", datasetHandler.Ingest)
+		pr.Get("/api/dataset/samples/queue", datasetHandler.Queue)
+		pr.Post("/api/dataset/samples/{id}/verdict", datasetHandler.Verdict)
+		pr.Get("/api/dataset/stats", datasetHandler.Stats)
 
 		pr.Group(func(admin chi.Router) {
 			admin.Use(handler.RequireAdmin(userStore))

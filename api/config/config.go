@@ -9,6 +9,7 @@ import (
 
 type Config struct {
 	DatabasePath   string
+	MLDatasetPath  string
 	DownloadPath   string
 	ScraperDir     string
 	Port           string
@@ -38,6 +39,7 @@ func Load() *Config {
 
 	return &Config{
 		DatabasePath:   getEnv("DATABASE_PATH", "./upanime.db"),
+		MLDatasetPath:  getEnv("ML_DATASET_PATH", ""),
 		DownloadPath:   getEnv("DOWNLOAD_PATH", "./downloads"),
 		ScraperDir:     getEnv("SCRAPER_DIR", "../scraper"),
 		Port:           getEnv("PORT", "8080"),

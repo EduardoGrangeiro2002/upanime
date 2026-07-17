@@ -8,6 +8,7 @@ import { EditionPage } from "@/pages/upscale"
 import { ComparePage } from "@/pages/compare"
 import { LoginPage } from "@/pages/login"
 import { InvitesPage } from "@/pages/invites"
+import { DatasetPage } from "@/pages/dataset"
 
 function errorDescription(error: Error): string {
   const text = error.message.trim()
@@ -43,6 +44,7 @@ function PageRouter({ page }: { page: PageRoute }) {
   if (page === "upscale") return <EditionPage />
   if (page === "compare") return <ComparePage />
   if (page === "invites") return <InvitesPage />
+  if (page === "dataset") return <DatasetPage />
   return <DownloadsPage />
 }
 

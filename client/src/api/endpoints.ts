@@ -1,5 +1,5 @@
 import { apiFetch } from "./client"
-import type { Anime, AuthStep, Download, DownloadRequest, EpisodeStreamVariant, Me, UploadEpisodeParams, UploadEpisodeResponse, UpscaleJob, UpscaleRequest, UserSummary } from "./types"
+import type { Anime, AuthStep, DatasetSample, DatasetStats, DatasetVerdict, Download, DownloadRequest, EpisodeStreamVariant, Me, UploadEpisodeParams, UploadEpisodeResponse, UpscaleJob, UpscaleRequest, UserSummary } from "./types"
 
 export function authLogin(email: string, password: string): Promise<{ step: AuthStep }> {
   return apiFetch<{ step: AuthStep }>("/auth/login", {
@@ -115,6 +115,21 @@ export function deleteUpscaleJob(id: string): Promise<void> {
 
 export function deleteUpscaledEpisode(id: string): Promise<void> {
   return apiFetch<void>(`/catalog/episode/${id}/upscaled`, { method: "DELETE" })
+}
+
+export function fetchDatasetQueue(limit = 50): Promise<DatasetSample[]> {
+  return apiFetch<DatasetSample[]>(`/dataset/samples/queue?limit=${limit}`)
+}
+
+export function submitDatasetVerdict(id: string, verdict: DatasetVerdict): Promise<void> {
+  return apiFetch<void>(`/dataset/samples/${id}/verdict`, {
+    method: "POST",
+    body: JSON.stringify({ verdict }),
+  })
+}
+
+export function fetchDatasetStats(): Promise<DatasetStats> {
+  return apiFetch<DatasetStats>("/dataset/stats")
 }
 
 export function uploadEpisode(

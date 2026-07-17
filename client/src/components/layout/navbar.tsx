@@ -1,4 +1,4 @@
-import { Download, Library, Wand2, SplitSquareHorizontal, LogOut, UserPlus } from "lucide-react"
+import { Download, Library, Wand2, SplitSquareHorizontal, LogOut, UserPlus, Database } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { authLogout } from "@/api/endpoints"
 import { useMe } from "@/hooks/use-me"
@@ -14,6 +14,7 @@ const baseNavItems: { route: PageRoute; icon: typeof Download; label: string }[]
   { route: "catalog", icon: Library, label: "Catálogo" },
   { route: "upscale", icon: Wand2, label: "Upscale" },
   { route: "compare", icon: SplitSquareHorizontal, label: "Comparar" },
+  { route: "dataset", icon: Database, label: "Dataset" },
 ]
 
 export function Navbar({ currentPage, onNavigate }: NavbarProps) {

@@ -75,3 +75,7 @@ catalog-migration.sql
 
 # vídeos de teste locais
 /*.mp4
+
+docs/audits/**/*.jpg
+docs/audits/**/*.png
+docs/audits/**/*.mp4

@@ -48,6 +48,13 @@ type ScraperStore interface {
 	FindByDomain(ctx context.Context, domain string) (*model.Scraper, error)
 }
 
+type DatasetStore interface {
+	Create(ctx context.Context, sample *model.DatasetSample) error
+	Queue(ctx context.Context, limit int) ([]model.DatasetSample, error)
+	SetVerdict(ctx context.Context, id int64, status string) error
+	Stats(ctx context.Context) ([]model.DatasetClassStat, error)
+}
+
 type UpscaleJobStore interface {
 	Create(ctx context.Context, job *model.UpscaleJob) error
 	ListActive(ctx context.Context) ([]model.UpscaleJob, error)

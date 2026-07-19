@@ -51,8 +51,48 @@ Atalhos: **A** aprova · **R** rejeita · **E** marca para ajuste manual · **M*
 Amostras `needs_edit` são a fila do editor de polígonos (Label Studio/CVAT) — exportação fica
 para quando o pipeline do professor existir (P1).
 
-## Fontes de frames planejadas (P2)
+## Fontes de frames (implementadas no professor)
 
 1. WD14 com threshold baixo (0.05) — filtro grosso de volume
-2. Amostra aleatória (~5–10%) dos frames rejeitados pelo WD14 — classes cegas + negativos (`class=none`, máscara vazia)
-3. Cenas apontadas manualmente
+2. Amostra aleatória (~7,5%) dos frames rejeitados pelo WD14 — classes cegas + negativos (`class=none`, máscara vazia)
+3. Timestamps manuais (`--timestamps "54.3,251.7"`)
+
+## O professor (`ml/` — pacote `upanime-teacher`)
+
+Pipeline composto que gera as máscaras candidatas e posta nesta API:
+**GroundingDINO** (prompts de efeito, score ≥ 0.2, rótulo não-vazio) + **SAM** por caixa,
+∪ **picos da máscara fotométrica HSV → SAM por ponto** (cobre orbes/beams que o DINO não vê,
+classe `energy`, `source=hsv`), ∪ negativos amostrados. Uma amostra por classe por frame.
+
+### Autenticação de máquina
+
+As rotas `/api/dataset/*` aceitam sessão OU `Authorization: Bearer $DATASET_INGEST_TOKEN`
+(env do servidor; comparação em tempo constante; bearer desabilitado se a env não existir).
+Gere um token longo (`openssl rand -hex 32`) e adicione ao `PROD_ENV`.
+
+### Rodando
+
+```bash
+cd ml
+TEACHER_API_BASE=https://<host> TEACHER_API_TOKEN=<token> \
+  .venv/bin/python -m upanime_teacher.cli <episodio.mp4|url-presignada> \
+  --anime "Slayers" --episode "S1E04"
+```
+
+Env vars em `docker.env.example` (`TEACHER_DEVICE=auto` usa CUDA se existir; senão CPU).
+
+### RunPod (pod avulso, não serverless)
+
+Imagem pública `alkindar/upanime-teacher` (deploy: `ml/deploy.sh --minor`, pesos DINO+SAM+WD14
+baked). Num pod GPU qualquer (4090/A40):
+
+```bash
+docker run --gpus all --env-file docker.env \
+  alkindar/upanime-teacher:latest <url-presignada-do-episodio> \
+  --anime "Slayers" --episode "S1E04"
+```
+
+### Limitação conhecida
+
+Com `STORAGE_TYPE=local` (dev), `frameUrl`/`maskUrl` da fila são caminhos de filesystem —
+a triagem no navegador só renderiza com storage R2 (prod), onde as URLs são presignadas.

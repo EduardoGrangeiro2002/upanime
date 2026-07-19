@@ -175,16 +175,19 @@ func main() {
 		pr.Get("/api/upscale", editionHandler.List)
 		pr.Delete("/api/upscale/{id}", editionHandler.Delete)
 
-		pr.Post("/api/dataset/samples", datasetHandler.Ingest)
-		pr.Get("/api/dataset/samples/queue", datasetHandler.Queue)
-		pr.Post("/api/dataset/samples/{id}/verdict", datasetHandler.Verdict)
-		pr.Get("/api/dataset/stats", datasetHandler.Stats)
-
 		pr.Group(func(admin chi.Router) {
 			admin.Use(handler.RequireAdmin(userStore))
 			admin.Post("/api/invites", inviteHandler.Create)
 			admin.Get("/api/users", inviteHandler.ListUsers)
 		})
+	})
+
+	r.Group(func(dr chi.Router) {
+		dr.Use(handler.RequireAuthOrToken(authService, cfg.DatasetIngestToken))
+		dr.Post("/api/dataset/samples", datasetHandler.Ingest)
+		dr.Get("/api/dataset/samples/queue", datasetHandler.Queue)
+		dr.Post("/api/dataset/samples/{id}/verdict", datasetHandler.Verdict)
+		dr.Get("/api/dataset/stats", datasetHandler.Stats)
 	})
 
 	distPath := filepath.Join("..", "client", "dist")

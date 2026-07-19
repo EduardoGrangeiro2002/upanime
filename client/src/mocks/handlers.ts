@@ -230,7 +230,7 @@ export const handlers = [
       }
       season.episodes.sort((a, b) => Number(a.number) - Number(b.number))
     }
-    return HttpResponse.json(anime)
+    return HttpResponse.json({ status: "queued" }, { status: 202 })
   }),
 
   http.delete("/api/catalog/episode/:id", async ({ params }) => {

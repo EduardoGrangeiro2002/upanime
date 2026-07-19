@@ -4,14 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
 	"github.com/go-chi/chi/v5"
 	"upanime/api/handler"
+	"upanime/api/jobs"
 	"upanime/api/model"
 	"upanime/api/service"
 	"upanime/api/storage"
@@ -21,15 +22,14 @@ import (
 
 type fakeWorkerClient struct {
 	err  error
-	jobs chan service.UpscaleWorkerJob
+	jobs []service.UpscaleWorkerJob
 }
 
 func (f *fakeWorkerClient) Enqueue(_ context.Context, job service.UpscaleWorkerJob) (string, error) {
 	if f.err != nil {
 		return "", f.err
 	}
-
-	f.jobs <- job
+	f.jobs = append(f.jobs, job)
 	return fmt.Sprintf("runpod-%d", job.JobID), nil
 }
 
@@ -37,31 +37,35 @@ func (f *fakeWorkerClient) Status(_ context.Context, runpodJobID string) (*servi
 	return &service.RunPodJobStatus{ID: runpodJobID, Status: "IN_PROGRESS"}, nil
 }
 
-func setupEditionTest(t *testing.T) (
-	*handler.EditionHandler,
-	*store.SQLiteAnimeStore,
-	*store.SQLiteEpisodeStore,
-	*store.SQLiteUpscaleStore,
-	*fakeWorkerClient,
-) {
+type editionEnv struct {
+	h        *handler.EditionHandler
+	animes   *store.SQLiteAnimeStore
+	episodes *store.SQLiteEpisodeStore
+	upscales *store.SQLiteUpscaleStore
+	worker   *fakeWorkerClient
+	enq      *fakeEnqueuer
+}
+
+func setupEditionTest(t *testing.T) *editionEnv {
 	t.Helper()
 
 	db := testutil.NewTestDB(t)
-	animeStore := store.NewSQLiteAnimeStore(db)
-	episodeStore := store.NewSQLiteEpisodeStore(db)
-	upscaleStore := store.NewSQLiteUpscaleStore(db)
-	fileStorage := storage.NewLocalStorage(t.TempDir())
-	workerClient := &fakeWorkerClient{jobs: make(chan service.UpscaleWorkerJob, 4)}
-
-	editionHandler := handler.NewEditionHandler(
-		upscaleStore,
-		animeStore,
-		episodeStore,
-		fileStorage,
-		workerClient,
+	env := &editionEnv{
+		animes:   store.NewSQLiteAnimeStore(db),
+		episodes: store.NewSQLiteEpisodeStore(db),
+		upscales: store.NewSQLiteUpscaleStore(db),
+		worker:   &fakeWorkerClient{},
+		enq:      &fakeEnqueuer{},
+	}
+	env.h = handler.NewEditionHandler(
+		env.upscales,
+		env.animes,
+		env.episodes,
+		storage.NewLocalStorage(t.TempDir()),
+		env.worker,
+		env.enq,
 	)
-
-	return editionHandler, animeStore, episodeStore, upscaleStore, workerClient
+	return env
 }
 
 func createAnimeWithStorageKey(t *testing.T, animeStore *store.SQLiteAnimeStore, episodeStore *store.SQLiteEpisodeStore) *model.Anime {
@@ -91,9 +95,24 @@ func createAnimeWithStorageKey(t *testing.T, animeStore *store.SQLiteAnimeStore,
 	return anime
 }
 
+func (e *editionEnv) createUpscaleJob(t *testing.T, anime *model.Anime) *model.UpscaleJob {
+	t.Helper()
+	job := &model.UpscaleJob{
+		EpisodeID:        anime.Seasons[0].Episodes[0].ID,
+		AnimeID:          anime.ID,
+		Type:             "upscale",
+		SourceStorageKey: "animes/upscale_handler/ep_1.mp4",
+		ResultStorageKey: "animes/upscale_handler/ep_1_upscaled.mp4",
+	}
+	if err := e.upscales.Create(t.Context(), job); err != nil {
+		t.Fatalf("create job: %v", err)
+	}
+	return job
+}
+
 func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
-	editionHandler, animeStore, episodeStore, _, workerClient := setupEditionTest(t)
-	anime := createAnimeWithStorageKey(t, animeStore, episodeStore)
+	env := setupEditionTest(t)
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
 
 	panRatio := 0.75
 	body, _ := json.Marshal(model.CreateUpscaleRequest{
@@ -108,59 +127,171 @@ func TestEditionHandler_CreateUpscale_Success(t *testing.T) {
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
 	response := httptest.NewRecorder()
-	editionHandler.Create(response, request)
+	env.h.Create(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
 	}
 
-	var jobs []model.UpscaleJob
-	if err := json.NewDecoder(response.Body).Decode(&jobs); err != nil {
+	var created []model.UpscaleJob
+	if err := json.NewDecoder(response.Body).Decode(&created); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(jobs) != 1 {
-		t.Fatalf("expected 1 job, got %d", len(jobs))
+	if len(created) != 1 {
+		t.Fatalf("expected 1 job, got %d", len(created))
 	}
-	if jobs[0].Status != "queued" {
-		t.Errorf("expected status 'queued', got '%s'", jobs[0].Status)
+	if created[0].Status != "queued" {
+		t.Errorf("expected status 'queued', got '%s'", created[0].Status)
 	}
-	if jobs[0].TargetHeight != 2160 {
-		t.Errorf("expected target height 2160, got %d", jobs[0].TargetHeight)
+	if created[0].TargetHeight != 2160 {
+		t.Errorf("expected target height 2160, got %d", created[0].TargetHeight)
 	}
-	if jobs[0].ResultStorageKey != "animes/upscale_handler/ep_1_upscaled.mp4" {
-		t.Errorf("unexpected result key: %s", jobs[0].ResultStorageKey)
+	if created[0].ResultStorageKey != "animes/upscale_handler/ep_1_upscaled.mp4" {
+		t.Errorf("unexpected result key: %s", created[0].ResultStorageKey)
 	}
 
-	select {
-	case queuedJob := <-workerClient.jobs:
-		if queuedJob.SourceStorageKey != "animes/upscale_handler/ep_1.mp4" {
-			t.Errorf("unexpected source key: %s", queuedJob.SourceStorageKey)
-		}
-		if queuedJob.ResultStorageKey != "animes/upscale_handler/ep_1_upscaled.mp4" {
-			t.Errorf("unexpected worker result key: %s", queuedJob.ResultStorageKey)
-		}
-		if queuedJob.TargetHeight != 2160 {
-			t.Errorf("unexpected worker target height: %d", queuedJob.TargetHeight)
-		}
-		if !queuedJob.Interpolate {
-			t.Error("expected interpolate to reach the worker job")
-		}
-		if queuedJob.PanRatio == nil || *queuedJob.PanRatio != 0.75 {
-			t.Errorf("expected pan ratio 0.75 to reach the worker job, got %v", queuedJob.PanRatio)
-		}
-		if !queuedJob.Effects {
-			t.Error("expected effects to reach the worker job")
-		}
-		if !queuedJob.SkipUpscale {
-			t.Error("expected skipUpscale to reach the worker job")
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("expected job to be queued in worker client")
+	if len(env.enq.upscales) != 1 {
+		t.Fatalf("expected 1 dispatch enqueued, got %d", len(env.enq.upscales))
+	}
+	wj := env.enq.upscales[0]
+	if wj.SourceStorageKey != "animes/upscale_handler/ep_1.mp4" {
+		t.Errorf("unexpected source key: %s", wj.SourceStorageKey)
+	}
+	if wj.ResultStorageKey != "animes/upscale_handler/ep_1_upscaled.mp4" {
+		t.Errorf("unexpected worker result key: %s", wj.ResultStorageKey)
+	}
+	if wj.TargetHeight != 2160 {
+		t.Errorf("unexpected worker target height: %d", wj.TargetHeight)
+	}
+	if !wj.Interpolate {
+		t.Error("expected interpolate to reach the worker job")
+	}
+	if wj.PanRatio == nil || *wj.PanRatio != 0.75 {
+		t.Errorf("expected pan ratio 0.75 to reach the worker job, got %v", wj.PanRatio)
+	}
+	if !wj.Effects {
+		t.Error("expected effects to reach the worker job")
+	}
+	if !wj.SkipUpscale {
+		t.Error("expected skipUpscale to reach the worker job")
+	}
+	if wj.SourceURL != "" {
+		t.Errorf("expected empty source url at enqueue time, got %s", wj.SourceURL)
+	}
+}
+
+func TestEditionHandler_Create_EnqueueErrorMarksFailed(t *testing.T) {
+	env := setupEditionTest(t)
+	env.enq.err = errors.New("redis fora")
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
+
+	body, _ := json.Marshal(model.CreateUpscaleRequest{
+		AnimeID:    anime.ID,
+		EpisodeIDs: []model.StringID{anime.Seasons[0].Episodes[0].ID},
+	})
+
+	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
+	response := httptest.NewRecorder()
+	env.h.Create(response, request)
+
+	if response.Code != http.StatusOK {
+		t.Fatalf("expected 200, got %d: %s", response.Code, response.Body.String())
+	}
+
+	var created []model.UpscaleJob
+	json.NewDecoder(response.Body).Decode(&created)
+	saved, err := env.upscales.GetByID(t.Context(), created[0].ID.Int64())
+	if err != nil {
+		t.Fatalf("get job: %v", err)
+	}
+	if saved.Status != "failed" {
+		t.Fatalf("expected failed on enqueue error, got %s", saved.Status)
+	}
+}
+
+func TestProcessDispatchTask_Completes(t *testing.T) {
+	env := setupEditionTest(t)
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
+	job := env.createUpscaleJob(t, anime)
+
+	task, err := jobs.NewUpscaleDispatchTask(service.UpscaleWorkerJob{
+		JobID:            job.ID.Int64(),
+		SourceStorageKey: job.SourceStorageKey,
+		ResultStorageKey: job.ResultStorageKey,
+		TargetHeight:     1080,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if err := env.h.ProcessDispatchTask(t.Context(), task); err != nil {
+		t.Fatalf("process dispatch: %v", err)
+	}
+
+	saved, _ := env.upscales.GetByID(t.Context(), job.ID.Int64())
+	if saved.Status != "processing" {
+		t.Fatalf("expected processing, got %s (%s)", saved.Status, saved.Error)
+	}
+	if saved.RunPodJobID == "" {
+		t.Fatal("expected runpod job id recorded")
+	}
+	if len(env.worker.jobs) != 1 {
+		t.Fatalf("expected 1 worker enqueue, got %d", len(env.worker.jobs))
+	}
+	if env.worker.jobs[0].SourceURL == "" {
+		t.Fatal("expected source url presigned at dispatch time")
+	}
+}
+
+func TestProcessDispatchTask_AlreadyDispatchedIsNoop(t *testing.T) {
+	env := setupEditionTest(t)
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
+	job := env.createUpscaleJob(t, anime)
+	_ = env.upscales.UpdateRunPodJobID(t.Context(), job.ID.Int64(), "runpod-existente")
+
+	task, _ := jobs.NewUpscaleDispatchTask(service.UpscaleWorkerJob{JobID: job.ID.Int64()})
+	if err := env.h.ProcessDispatchTask(t.Context(), task); err != nil {
+		t.Fatalf("expected nil, got %v", err)
+	}
+	if len(env.worker.jobs) != 0 {
+		t.Fatalf("expected no worker enqueue, got %d", len(env.worker.jobs))
+	}
+}
+
+func TestProcessDispatchTask_DeletedRowIsNoop(t *testing.T) {
+	env := setupEditionTest(t)
+
+	task, _ := jobs.NewUpscaleDispatchTask(service.UpscaleWorkerJob{JobID: 9999})
+	if err := env.h.ProcessDispatchTask(t.Context(), task); err != nil {
+		t.Fatalf("expected nil for missing job, got %v", err)
+	}
+	if len(env.worker.jobs) != 0 {
+		t.Fatalf("expected no worker enqueue, got %d", len(env.worker.jobs))
+	}
+}
+
+func TestProcessDispatchTask_WorkerFailureMarksFailed(t *testing.T) {
+	env := setupEditionTest(t)
+	env.worker.err = errors.New("runpod fora")
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
+	job := env.createUpscaleJob(t, anime)
+
+	task, _ := jobs.NewUpscaleDispatchTask(service.UpscaleWorkerJob{
+		JobID:            job.ID.Int64(),
+		SourceStorageKey: job.SourceStorageKey,
+	})
+	if err := env.h.ProcessDispatchTask(t.Context(), task); err == nil {
+		t.Fatal("expected error to propagate for retry accounting")
+	}
+
+	saved, _ := env.upscales.GetByID(t.Context(), job.ID.Int64())
+	if saved.Status != "failed" {
+		t.Fatalf("expected failed, got %s", saved.Status)
 	}
 }
 
 func TestEditionHandler_Create_EpisodeNotDownloaded(t *testing.T) {
-	editionHandler, animeStore, _, _, _ := setupEditionTest(t)
+	env := setupEditionTest(t)
 
 	anime := &model.Anime{
 		Title:     "No Download Anime",
@@ -172,7 +303,7 @@ func TestEditionHandler_Create_EpisodeNotDownloaded(t *testing.T) {
 			}},
 		},
 	}
-	if err := animeStore.Create(t.Context(), anime); err != nil {
+	if err := env.animes.Create(t.Context(), anime); err != nil {
 		t.Fatalf("create anime: %v", err)
 	}
 
@@ -183,7 +314,7 @@ func TestEditionHandler_Create_EpisodeNotDownloaded(t *testing.T) {
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
 	response := httptest.NewRecorder()
-	editionHandler.Create(response, request)
+	env.h.Create(response, request)
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
@@ -191,8 +322,8 @@ func TestEditionHandler_Create_EpisodeNotDownloaded(t *testing.T) {
 }
 
 func TestEditionHandler_Create_InvalidTargetHeight(t *testing.T) {
-	editionHandler, animeStore, episodeStore, _, _ := setupEditionTest(t)
-	anime := createAnimeWithStorageKey(t, animeStore, episodeStore)
+	env := setupEditionTest(t)
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
 
 	body, _ := json.Marshal(model.CreateUpscaleRequest{
 		AnimeID:      anime.ID,
@@ -202,7 +333,7 @@ func TestEditionHandler_Create_InvalidTargetHeight(t *testing.T) {
 
 	request := httptest.NewRequest("POST", "/api/upscale", bytes.NewReader(body))
 	response := httptest.NewRecorder()
-	editionHandler.Create(response, request)
+	env.h.Create(response, request)
 
 	if response.Code != http.StatusBadRequest {
 		t.Fatalf("expected 400, got %d: %s", response.Code, response.Body.String())
@@ -210,42 +341,32 @@ func TestEditionHandler_Create_InvalidTargetHeight(t *testing.T) {
 }
 
 func TestEditionHandler_List_Empty(t *testing.T) {
-	editionHandler, _, _, _, _ := setupEditionTest(t)
+	env := setupEditionTest(t)
 
 	request := httptest.NewRequest("GET", "/api/upscale", nil)
 	response := httptest.NewRecorder()
-	editionHandler.List(response, request)
+	env.h.List(response, request)
 
 	if response.Code != http.StatusOK {
 		t.Fatalf("expected 200, got %d", response.Code)
 	}
 
-	var jobs []model.UpscaleJob
-	if err := json.NewDecoder(response.Body).Decode(&jobs); err != nil {
+	var listed []model.UpscaleJob
+	if err := json.NewDecoder(response.Body).Decode(&listed); err != nil {
 		t.Fatalf("decode response: %v", err)
 	}
-	if len(jobs) != 0 {
-		t.Fatalf("expected 0 jobs, got %d", len(jobs))
+	if len(listed) != 0 {
+		t.Fatalf("expected 0 jobs, got %d", len(listed))
 	}
 }
 
 func TestEditionHandler_Delete(t *testing.T) {
-	editionHandler, animeStore, episodeStore, upscaleStore, _ := setupEditionTest(t)
-	anime := createAnimeWithStorageKey(t, animeStore, episodeStore)
-
-	job := &model.UpscaleJob{
-		EpisodeID:        anime.Seasons[0].Episodes[0].ID,
-		AnimeID:          anime.ID,
-		Type:             "upscale",
-		SourceStorageKey: "animes/upscale_handler/ep_1.mp4",
-		ResultStorageKey: "animes/upscale_handler/ep_1_upscaled.mp4",
-	}
-	if err := upscaleStore.Create(t.Context(), job); err != nil {
-		t.Fatalf("create job: %v", err)
-	}
+	env := setupEditionTest(t)
+	anime := createAnimeWithStorageKey(t, env.animes, env.episodes)
+	job := env.createUpscaleJob(t, anime)
 
 	router := chi.NewRouter()
-	router.Delete("/api/upscale/{id}", editionHandler.Delete)
+	router.Delete("/api/upscale/{id}", env.h.Delete)
 
 	request := httptest.NewRequest("DELETE", fmt.Sprintf("/api/upscale/%d", job.ID.Int64()), nil)
 	response := httptest.NewRecorder()
@@ -255,7 +376,10 @@ func TestEditionHandler_Delete(t *testing.T) {
 		t.Fatalf("expected 204, got %d: %s", response.Code, response.Body.String())
 	}
 
-	if _, err := upscaleStore.GetByID(t.Context(), job.ID.Int64()); err == nil {
+	if _, err := env.upscales.GetByID(t.Context(), job.ID.Int64()); err == nil {
 		t.Fatal("expected error after delete")
+	}
+	if len(env.enq.upscaleCancelled) != 1 || env.enq.upscaleCancelled[0] != job.ID.Int64() {
+		t.Fatalf("expected cancel for %d, got %v", job.ID.Int64(), env.enq.upscaleCancelled)
 	}
 }

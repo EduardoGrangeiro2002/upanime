@@ -18,6 +18,7 @@ import (
 	"upanime/api/config"
 	"upanime/api/db"
 	"upanime/api/handler"
+	"upanime/api/jobs"
 	"upanime/api/model"
 	"upanime/api/scraper"
 	"upanime/api/service"
@@ -66,17 +67,20 @@ func main() {
 
 	exec := scraper.NewPythonExecutor(cfg.ScraperDir)
 
+	enqueuer := jobs.NewAsynqEnqueuer(cfg.RedisAddr)
+	defer enqueuer.Close()
+
 	classifier := service.NewGenreClassifier(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "", animeStore)
 	organizer := service.NewEpisodeOrganizer(cfg.OpenRouterAPIKey, cfg.ClassifierModel, "")
 
 	animeHandler := handler.NewAnimeHandler(scraperStore, exec, organizer)
-	downloadHandler := handler.NewDownloadHandler(downloadStore, animeStore, episodeStore, scraperStore, exec, fs, classifier, cfg.DatabasePath, cfg.MaxDownloads)
+	downloadHandler := handler.NewDownloadHandler(downloadStore, animeStore, episodeStore, scraperStore, exec, fs, classifier, cfg.DatabasePath, enqueuer)
 	catalogHandler := handler.NewCatalogHandler(animeStore, episodeStore, fs)
 	uploadHandler := handler.NewUploadHandler(animeStore, episodeStore, scraperStore, fs, classifier)
 
 	upscaleStore := store.NewSQLiteUpscaleStore(database)
 	workerClient := service.NewRunPodUpscaleWorkerClient(cfg.RunPodEndpointID, cfg.RunPodAPIKey)
-	editionHandler := handler.NewEditionHandler(upscaleStore, animeStore, episodeStore, fs, workerClient)
+	editionHandler := handler.NewEditionHandler(upscaleStore, animeStore, episodeStore, fs, workerClient, enqueuer)
 
 	thumbnailService := service.NewThumbnailService(fs, nil)
 	thumbnailHandler := handler.NewThumbnailHandler(episodeStore, thumbnailService, fs)
@@ -112,7 +116,7 @@ func main() {
 
 	redisClient := redis.NewClient(&redis.Options{Addr: cfg.RedisAddr})
 	if err := redisClient.Ping(context.Background()).Err(); err != nil {
-		log.Printf("aviso: redis inacessível em %s (%v) — MFA e reset de senha não vão funcionar", cfg.RedisAddr, err)
+		log.Printf("aviso: redis inacessível em %s (%v) — MFA, reset de senha e filas de jobs não vão funcionar", cfg.RedisAddr, err)
 	}
 
 	var mailer auth.Mailer = &auth.LogMailer{}
@@ -161,8 +165,8 @@ func main() {
 		pr.Delete("/api/downloads/{id}", downloadHandler.Delete)
 		pr.Get("/api/catalog", catalogHandler.List)
 		pr.Post("/api/catalog/upload", uploadHandler.Create)
-		pr.Post("/api/catalog/classify", handler.ClassifyAllHandler(classifier))
-		pr.Post("/api/catalog/anime/{id}/organize", handler.OrganizeAnimeHandler(organizer, animeStore))
+		pr.Post("/api/catalog/classify", handler.ClassifyAllHandler(classifier, enqueuer))
+		pr.Post("/api/catalog/anime/{id}/organize", handler.OrganizeAnimeHandler(organizer, animeStore, enqueuer))
 		pr.Delete("/api/catalog/anime/{id}", catalogHandler.DeleteAnime)
 		pr.Post("/api/catalog/anime/{id}/cover", catalogHandler.UploadCover)
 		pr.Delete("/api/catalog/episode/{id}", catalogHandler.DeleteEpisode)
@@ -195,6 +199,17 @@ func main() {
 		fileServer := http.FileServer(http.Dir(distPath))
 		r.Handle("/*", fileServer)
 	}
+
+	if err := jobs.Reconcile(context.Background(), enqueuer.Inspector(), downloadStore, upscaleStore); err != nil {
+		log.Printf("aviso: reconcile de jobs falhou: %v", err)
+	}
+	stopWorkers := jobs.StartWorkers(cfg.RedisAddr, cfg.MaxDownloads, jobs.Handlers{
+		Download:        downloadHandler.ProcessDownloadTask,
+		UpscaleDispatch: editionHandler.ProcessDispatchTask,
+		ClassifyAll:     handler.ClassifyAllTask(classifier),
+		Organize:        handler.OrganizeTask(organizer, animeStore),
+	})
+	defer stopWorkers()
 
 	log.Printf("listening on :%s", cfg.Port)
 	log.Fatal(http.ListenAndServe(":"+cfg.Port, r))

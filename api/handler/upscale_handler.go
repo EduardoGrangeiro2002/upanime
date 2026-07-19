@@ -3,6 +3,7 @@ package handler
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 	"path/filepath"
@@ -10,6 +11,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hibiken/asynq"
+	"upanime/api/jobs"
 	"upanime/api/model"
 	"upanime/api/service"
 	"upanime/api/storage"
@@ -22,23 +25,26 @@ type EditionHandler struct {
 	episodes store.EpisodeStore
 	storage  storage.FileStorage
 	worker   service.UpscaleWorkerClient
+	enq      jobs.Enqueuer
 }
 
 var validTargetHeights = map[int]bool{1080: true, 1440: true, 2160: true}
 
 func NewEditionHandler(
-	jobs store.UpscaleJobStore,
+	jobStore store.UpscaleJobStore,
 	animes store.AnimeStore,
 	episodes store.EpisodeStore,
 	fs storage.FileStorage,
 	worker service.UpscaleWorkerClient,
+	enq jobs.Enqueuer,
 ) *EditionHandler {
 	return &EditionHandler{
-		jobs:     jobs,
+		jobs:     jobStore,
 		animes:   animes,
 		episodes: episodes,
 		storage:  fs,
 		worker:   worker,
+		enq:      enq,
 	}
 }
 
@@ -111,25 +117,17 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		}
 
 		created = append(created, *job)
-		go h.dispatchJob(*job)
+		if err := h.enq.EnqueueUpscaleDispatch(r.Context(), buildWorkerJob(*job)); err != nil {
+			_ = h.jobs.UpdateStatus(r.Context(), job.ID.Int64(), "failed", "enfileirar: "+err.Error())
+		}
 	}
 
 	writeJSON(w, created)
 }
 
-func (h *EditionHandler) dispatchJob(job model.UpscaleJob) {
-	ctx := context.Background()
-	jobID := job.ID.Int64()
-
-	sourceURL, err := h.storage.URL(ctx, job.SourceStorageKey)
-	if err != nil {
-		_ = h.jobs.UpdateStatus(ctx, jobID, "failed", fmt.Sprintf("Falha ao gerar URL fonte: %v", err))
-		return
-	}
-
-	req := service.UpscaleWorkerJob{
-		JobID:            jobID,
-		SourceURL:        sourceURL,
+func buildWorkerJob(job model.UpscaleJob) service.UpscaleWorkerJob {
+	return service.UpscaleWorkerJob{
+		JobID:            job.ID.Int64(),
 		SourceStorageKey: job.SourceStorageKey,
 		ResultStorageKey: job.ResultStorageKey,
 		Variants:         buildWorkerVariants(job),
@@ -145,15 +143,45 @@ func (h *EditionHandler) dispatchJob(job model.UpscaleJob) {
 		EffectsSens:      job.EffectsSens,
 		SkipUpscale:      job.SkipUpscale,
 	}
+}
 
-	runpodJobID, err := h.worker.Enqueue(ctx, req)
-	if err != nil {
-		_ = h.jobs.UpdateStatus(ctx, jobID, "failed", fmt.Sprintf("Falha ao enfileirar no RunPod: %v", err))
-		return
+func (h *EditionHandler) ProcessDispatchTask(ctx context.Context, t *asynq.Task) error {
+	var wj service.UpscaleWorkerJob
+	if err := json.Unmarshal(t.Payload(), &wj); err != nil {
+		return err
 	}
 
-	_ = h.jobs.UpdateRunPodJobID(ctx, jobID, runpodJobID)
-	_ = h.jobs.UpdateStatus(ctx, jobID, "processing", "")
+	job, err := h.jobs.GetByID(ctx, wj.JobID)
+	if err != nil {
+		return nil
+	}
+	if job.RunPodJobID != "" {
+		return nil
+	}
+
+	sourceURL, err := h.storage.URL(ctx, wj.SourceStorageKey)
+	if err != nil {
+		return h.dispatchFailed(ctx, wj.JobID, fmt.Sprintf("Falha ao gerar URL fonte: %v", err))
+	}
+	wj.SourceURL = sourceURL
+
+	runpodJobID, err := h.worker.Enqueue(ctx, wj)
+	if err != nil {
+		return h.dispatchFailed(ctx, wj.JobID, fmt.Sprintf("Falha ao enfileirar no RunPod: %v", err))
+	}
+
+	_ = h.jobs.UpdateRunPodJobID(ctx, wj.JobID, runpodJobID)
+	_ = h.jobs.UpdateStatus(ctx, wj.JobID, "processing", "")
+	return nil
+}
+
+func (h *EditionHandler) dispatchFailed(ctx context.Context, jobID int64, msg string) error {
+	if jobs.FinalAttempt(ctx) {
+		_ = h.jobs.UpdateStatus(ctx, jobID, "failed", msg)
+		return errors.New(msg)
+	}
+	_ = h.jobs.UpdateStatus(ctx, jobID, "queued", msg)
+	return errors.New(msg)
 }
 
 func (h *EditionHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -181,6 +209,8 @@ func (h *EditionHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 		return
 	}
+
+	_ = h.enq.CancelUpscale(r.Context(), id)
 
 	w.WriteHeader(http.StatusNoContent)
 }

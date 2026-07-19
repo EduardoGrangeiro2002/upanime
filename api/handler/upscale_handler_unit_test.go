@@ -54,6 +54,38 @@ func TestBuildWorkerVariantsSkipUpscale(t *testing.T) {
 	}
 }
 
+func TestBuildWorkerJobLeavesSourceURLEmpty(t *testing.T) {
+	t.Parallel()
+
+	sharpen := 0.5
+	job := model.UpscaleJob{
+		ID:               model.StringID(9),
+		TargetHeight:     1440,
+		Sharpen:          &sharpen,
+		Interpolate:      true,
+		SourceStorageKey: "animes/naruto/ep_1.mp4",
+		ResultStorageKey: "animes/naruto/ep_1_upscaled.mp4",
+	}
+
+	wj := buildWorkerJob(job)
+
+	if wj.JobID != 9 {
+		t.Fatalf("expected job id 9, got %d", wj.JobID)
+	}
+	if wj.SourceURL != "" {
+		t.Fatalf("expected empty source url, got %s", wj.SourceURL)
+	}
+	if wj.SourceStorageKey != job.SourceStorageKey || wj.ResultStorageKey != job.ResultStorageKey {
+		t.Fatal("expected storage keys carried to worker job")
+	}
+	if wj.Sharpen == nil || *wj.Sharpen != 0.5 || !wj.Interpolate {
+		t.Fatal("expected effect params carried to worker job")
+	}
+	if len(wj.Variants) != 1 || wj.Variants[0].Height != 1080 {
+		t.Fatalf("expected 1080 variant, got %+v", wj.Variants)
+	}
+}
+
 func TestBuildUpscaledKey(t *testing.T) {
 	t.Parallel()
 

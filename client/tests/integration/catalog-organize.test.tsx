@@ -21,7 +21,7 @@ describe("Catalog organize episodes", () => {
     await user.click(screen.getByRole("button", { name: /Organizar episódios com IA/i }))
 
     await waitFor(() => {
-      expect(screen.getByText("Episódios organizados")).toBeInTheDocument()
+      expect(screen.getByText(/Organização iniciada/i)).toBeInTheDocument()
     })
   })
 })

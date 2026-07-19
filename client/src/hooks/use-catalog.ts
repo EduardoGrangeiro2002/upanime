@@ -69,7 +69,8 @@ export function useOrganizeAnime() {
     mutationFn: organizeAnime,
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["catalog"] })
-      toast.success("Episódios organizados")
+      toast.info("Organização iniciada — os episódios serão renumerados em instantes")
+      setTimeout(() => queryClient.invalidateQueries({ queryKey: ["catalog"] }), 20_000)
     },
   })
 }

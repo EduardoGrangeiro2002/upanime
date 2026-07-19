@@ -14,6 +14,8 @@ import (
 	"strings"
 
 	"github.com/go-chi/chi/v5"
+	"github.com/hibiken/asynq"
+	"upanime/api/jobs"
 	"upanime/api/model"
 	"upanime/api/scraper"
 	"upanime/api/service"
@@ -30,7 +32,7 @@ type DownloadHandler struct {
 	storage    storage.FileStorage
 	classifier *service.GenreClassifier
 	dbPath     string
-	sem        chan struct{}
+	enq        jobs.Enqueuer
 }
 
 func NewDownloadHandler(
@@ -42,7 +44,7 @@ func NewDownloadHandler(
 	fs storage.FileStorage,
 	classifier *service.GenreClassifier,
 	dbPath string,
-	concurrency int,
+	enq jobs.Enqueuer,
 ) *DownloadHandler {
 	return &DownloadHandler{
 		downloads:  downloads,
@@ -53,7 +55,7 @@ func NewDownloadHandler(
 		storage:    fs,
 		classifier: classifier,
 		dbPath:     dbPath,
-		sem:        make(chan struct{}, concurrency),
+		enq:        enq,
 	}
 }
 
@@ -101,7 +103,9 @@ func (h *DownloadHandler) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, d := range created {
-		go h.processDownload(d, anime.Title)
+		if err := h.enq.EnqueueDownload(r.Context(), d.ID.Int64()); err != nil {
+			_ = h.downloads.UpdateStatus(r.Context(), d.ID.Int64(), "failed", "enfileirar: "+err.Error())
+		}
 	}
 
 	if animeCreated && anime.ImageURL != "" {
@@ -216,64 +220,84 @@ func (h *DownloadHandler) downloadCoverAsync(animeID int64, imageURL, title stri
 	}
 }
 
-func (h *DownloadHandler) processDownload(d model.Download, animeTitle string) {
-	h.sem <- struct{}{}
-	defer func() { <-h.sem }()
+func (h *DownloadHandler) ProcessDownloadTask(ctx context.Context, t *asynq.Task) error {
+	var p jobs.DownloadPayload
+	if err := json.Unmarshal(t.Payload(), &p); err != nil {
+		return err
+	}
 
-	ctx := context.Background()
+	d, err := h.downloads.GetByID(ctx, p.DownloadID)
+	if err != nil {
+		return nil
+	}
+	if d.Status == "completed" {
+		return nil
+	}
 
-	_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "resolving", "")
+	_ = h.downloads.UpdateStatus(ctx, p.DownloadID, "resolving", "")
 
 	anime, err := h.animes.GetByID(ctx, d.AnimeID.Int64())
 	if err != nil {
-		_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "failed", err.Error())
-		return
+		_ = h.downloads.UpdateStatus(ctx, p.DownloadID, "failed", err.Error())
+		return nil
 	}
 
-	var episode *model.Episode
-	for _, s := range anime.Seasons {
-		for _, ep := range s.Episodes {
-			if ep.ID.Int64() == d.EpisodeID.Int64() {
-				episode = &ep
-				break
-			}
-		}
-	}
-
+	episode := findEpisodeByID(anime, d.EpisodeID.Int64())
 	if episode == nil {
-		_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "failed", "episode not found")
-		return
+		_ = h.downloads.UpdateStatus(ctx, p.DownloadID, "failed", "episode not found")
+		return nil
 	}
 
-	animeSlug := sanitize(animeTitle)
-	epSlug := sanitize(episode.Title)
-	if episode.Number != "" {
-		epSlug = fmt.Sprintf("s%02de%s", episode.SeasonNumber, sanitize(episode.Number))
-	}
-	storageKey := fmt.Sprintf("animes/%s/%s.mp4", animeSlug, epSlug)
-	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("upanime_%d.mp4", d.ID.Int64()))
+	storageKey := downloadStorageKey(anime.Title, *episode)
+	tmpPath := filepath.Join(os.TempDir(), fmt.Sprintf("upanime_%d.mp4", p.DownloadID))
 
-	err = h.executor.Download(ctx, episode.URL, tmpPath, d.ID.Int64(), h.dbPath)
-	if err != nil {
-		_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "failed", err.Error())
-		return
+	if err := h.executor.Download(ctx, episode.URL, tmpPath, p.DownloadID, h.dbPath); err != nil {
+		return h.downloadFailed(ctx, p.DownloadID, err)
 	}
 
 	f, err := os.Open(tmpPath)
 	if err != nil {
-		_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "failed", err.Error())
-		return
+		return h.downloadFailed(ctx, p.DownloadID, err)
 	}
 	defer f.Close()
 	defer os.Remove(tmpPath)
 
 	if err := h.storage.Save(ctx, storageKey, f); err != nil {
-		_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "failed", err.Error())
-		return
+		return h.downloadFailed(ctx, p.DownloadID, err)
 	}
 
 	_ = h.episodes.UpdateStorageKey(ctx, d.EpisodeID.Int64(), storageKey)
-	_ = h.downloads.UpdateStatus(ctx, d.ID.Int64(), "completed", "")
+	_ = h.downloads.UpdateStatus(ctx, p.DownloadID, "completed", "")
+	return nil
+}
+
+func (h *DownloadHandler) downloadFailed(ctx context.Context, id int64, err error) error {
+	if jobs.FinalAttempt(ctx) {
+		_ = h.downloads.UpdateStatus(ctx, id, "failed", err.Error())
+		return err
+	}
+	_ = h.downloads.UpdateStatus(ctx, id, "queued", err.Error())
+	return err
+}
+
+func findEpisodeByID(anime *model.Anime, episodeID int64) *model.Episode {
+	for _, s := range anime.Seasons {
+		for _, ep := range s.Episodes {
+			if ep.ID.Int64() == episodeID {
+				found := ep
+				return &found
+			}
+		}
+	}
+	return nil
+}
+
+func downloadStorageKey(animeTitle string, ep model.Episode) string {
+	epSlug := sanitize(ep.Title)
+	if ep.Number != "" {
+		epSlug = fmt.Sprintf("s%02de%s", ep.SeasonNumber, sanitize(ep.Number))
+	}
+	return fmt.Sprintf("animes/%s/%s.mp4", sanitize(animeTitle), epSlug)
 }
 
 func (h *DownloadHandler) List(w http.ResponseWriter, r *http.Request) {
@@ -315,6 +339,8 @@ func (h *DownloadHandler) Delete(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error":"delete failed"}`, http.StatusInternalServerError)
 		return
 	}
+
+	_ = h.enq.CancelDownload(r.Context(), id)
 
 	w.WriteHeader(http.StatusNoContent)
 }

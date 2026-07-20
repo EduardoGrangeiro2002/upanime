@@ -1,8 +1,16 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
 import { MediaPlayer, MediaProvider, type MediaPlayerInstance } from "@vidstack/react"
 import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default"
 import { Button } from "@/components/ui/button"
 import { X, SkipBack, SkipForward } from "lucide-react"
+
+type LockableOrientation = ScreenOrientation & { lock?: (orientation: string) => Promise<void> }
+
+export function needsRotatedFullscreen() {
+  if (document.fullscreenEnabled) return false
+  const orientation = screen.orientation as LockableOrientation | undefined
+  return typeof orientation?.lock !== "function"
+}
 
 interface VideoPlayerProps {
   src: string
@@ -30,7 +38,21 @@ export function VideoPlayer({
   onPause,
 }: VideoPlayerProps) {
   const playerRef = useRef<MediaPlayerInstance>(null)
+  const wrapperRef = useRef<HTMLDivElement>(null)
   const seekedRef = useRef(false)
+  const [rotated, setRotated] = useState(false)
+
+  useEffect(() => {
+    const wrapper = wrapperRef.current
+    if (!wrapper) return
+    const handleRequest = (event: Event) => {
+      if (!needsRotatedFullscreen()) return
+      event.preventDefault()
+      setRotated((prev) => !prev)
+    }
+    wrapper.addEventListener("media-enter-fullscreen-request", handleRequest, true)
+    return () => wrapper.removeEventListener("media-enter-fullscreen-request", handleRequest, true)
+  }, [])
 
   const handleTimeUpdate = useCallback(() => {
     const player = playerRef.current
@@ -51,7 +73,14 @@ export function VideoPlayer({
   }, [initialTime])
 
   return (
-    <div className="relative rounded-lg overflow-hidden bg-black mb-4">
+    <div
+      ref={wrapperRef}
+      className={
+        rotated
+          ? "fixed inset-0 z-[100] bg-black flex items-center justify-center"
+          : "relative rounded-lg overflow-hidden bg-black mb-4"
+      }
+    >
       <div className="absolute top-2 right-2 z-50 flex items-center gap-1">
         {onPrevious && (
           <Button
@@ -89,21 +118,23 @@ export function VideoPlayer({
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>
       </div>
-      <MediaPlayer
-        ref={playerRef}
-        key={src}
-        src={{ src, type: "video/mp4" }}
-        title={title}
-        aspectRatio="16/9"
-        playsInline
-        autoPlay={autoPlay}
-        onTimeUpdate={handleTimeUpdate}
-        onCanPlay={handleCanPlay}
-        onPause={onPause}
-      >
-        <MediaProvider />
-        <DefaultVideoLayout icons={defaultLayoutIcons} colorScheme="dark" />
-      </MediaPlayer>
+      <div className={rotated ? "w-[100dvh] h-[100dvw] rotate-90" : undefined}>
+        <MediaPlayer
+          ref={playerRef}
+          key={src}
+          src={{ src, type: "video/mp4" }}
+          title={title}
+          aspectRatio="16/9"
+          playsInline
+          autoPlay={autoPlay}
+          onTimeUpdate={handleTimeUpdate}
+          onCanPlay={handleCanPlay}
+          onPause={onPause}
+        >
+          <MediaProvider />
+          <DefaultVideoLayout icons={defaultLayoutIcons} colorScheme="dark" />
+        </MediaPlayer>
+      </div>
     </div>
   )
 }

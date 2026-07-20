@@ -1,27 +1,17 @@
-import { useEffect, useRef, useCallback } from "react"
+import { useEffect, useRef, useCallback, useState } from "react"
+import { createPortal } from "react-dom"
 import { MediaPlayer, MediaProvider, type MediaPlayerInstance } from "@vidstack/react"
-import { DefaultVideoLayout, defaultLayoutIcons } from "@vidstack/react/player/layouts/default"
-import { Button } from "@/components/ui/button"
-import { X, SkipBack, SkipForward } from "lucide-react"
-
-type NativeFullscreenVideo = HTMLVideoElement & { webkitEnterFullscreen: () => void }
-
-function supportsNativeFullscreen(video: HTMLVideoElement | null): video is NativeFullscreenVideo {
-  return !!video && typeof (video as Partial<NativeFullscreenVideo>).webkitEnterFullscreen === "function"
-}
-
-export function enterNativeFullscreen(video: HTMLVideoElement | null, event: Event) {
-  if (!supportsNativeFullscreen(video)) return false
-  event.preventDefault()
-  event.stopImmediatePropagation()
-  video.webkitEnterFullscreen()
-  return true
-}
+import { PlayerControls } from "./player-controls"
+import { usePseudoFullscreen } from "@/hooks/use-fullscreen"
+import { pseudoFullscreenStyle, needsCssRotation } from "@/lib/fullscreen"
+import { buildQualityOptions } from "@/lib/quality"
+import type { Episode } from "@/api/types"
 
 interface VideoPlayerProps {
   src: string
   title: string
-  episodeId: string
+  episode: Episode
+  resolveVariantUrl: (variant: string) => string
   autoPlay?: boolean
   onClose: () => void
   onPrevious?: () => void
@@ -34,7 +24,8 @@ interface VideoPlayerProps {
 export function VideoPlayer({
   src,
   title,
-  episodeId,
+  episode,
+  resolveVariantUrl,
   autoPlay = false,
   onClose,
   onPrevious,
@@ -44,18 +35,21 @@ export function VideoPlayer({
   onPause,
 }: VideoPlayerProps) {
   const playerRef = useRef<MediaPlayerInstance>(null)
-  const wrapperRef = useRef<HTMLDivElement>(null)
   const seekedRef = useRef(false)
+  const pendingSeekRef = useRef<number | null>(null)
+  const [source, setSource] = useState(src)
+  const [activeQuality, setActiveQuality] = useState("original")
+  const [menuOpen, setMenuOpen] = useState(false)
+  const { isFullscreen, toggle, usesRealFullscreen } = usePseudoFullscreen(episode.id)
+
+  const qualities = buildQualityOptions(episode)
 
   useEffect(() => {
-    const wrapper = wrapperRef.current
-    if (!wrapper) return
-    const handleRequest = (event: Event) => {
-      enterNativeFullscreen(wrapper.querySelector("video"), event)
-    }
-    wrapper.addEventListener("media-enter-fullscreen-request", handleRequest, true)
-    return () => wrapper.removeEventListener("media-enter-fullscreen-request", handleRequest, true)
-  }, [])
+    seekedRef.current = false
+    pendingSeekRef.current = null
+    setSource(src)
+    setActiveQuality("original")
+  }, [episode.id, src])
 
   const handleTimeUpdate = useCallback(() => {
     const player = playerRef.current
@@ -63,72 +57,71 @@ export function VideoPlayer({
     onTimeUpdate?.(player.currentTime, player.duration)
   }, [onTimeUpdate])
 
-  useEffect(() => {
-    seekedRef.current = false
-  }, [episodeId])
-
   const handleCanPlay = useCallback(() => {
-    if (seekedRef.current || !initialTime || initialTime < 2) return
     const player = playerRef.current
     if (!player) return
+    if (pendingSeekRef.current !== null) {
+      player.currentTime = pendingSeekRef.current
+      pendingSeekRef.current = null
+      return
+    }
+    if (seekedRef.current || !initialTime || initialTime < 2) return
     player.currentTime = initialTime
     seekedRef.current = true
   }, [initialTime])
 
-  return (
-    <div ref={wrapperRef} className="relative rounded-lg overflow-hidden bg-black mb-4">
-      <div className="absolute top-2 right-2 z-50 flex items-center gap-1">
-        {onPrevious && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 md:h-8 md:w-8 bg-black/60 hover:bg-black/80 text-white"
-            onClick={onPrevious}
-            aria-label="Episódio anterior"
-            data-tooltip="Episódio anterior"
-          >
-            <SkipBack className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        )}
-        {onNext && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="h-10 w-10 md:h-8 md:w-8 bg-black/60 hover:bg-black/80 text-white"
-            onClick={onNext}
-            aria-label="Próximo episódio"
-            data-tooltip="Próximo episódio"
-          >
-            <SkipForward className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="h-8 w-8 bg-black/60 hover:bg-black/80 text-white"
-          onClick={onClose}
-          aria-label="Fechar player"
-          data-tooltip="Fechar player"
-          data-tooltip-pos="left"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-      <MediaPlayer
-        ref={playerRef}
-        key={src}
-        src={{ src, type: "video/mp4" }}
-        title={title}
-        aspectRatio="16/9"
-        playsInline
-        autoPlay={autoPlay}
-        onTimeUpdate={handleTimeUpdate}
-        onCanPlay={handleCanPlay}
-        onPause={onPause}
-      >
-        <MediaProvider />
-        <DefaultVideoLayout icons={defaultLayoutIcons} colorScheme="dark" />
-      </MediaPlayer>
-    </div>
+  const selectQuality = useCallback(
+    (variant: string) => {
+      const player = playerRef.current
+      if (!player || variant === activeQuality) return
+      pendingSeekRef.current = player.currentTime
+      setActiveQuality(variant)
+      setSource(resolveVariantUrl(variant))
+    },
+    [activeQuality, resolveVariantUrl],
   )
+
+  const controls = (
+    <PlayerControls
+      onClose={onClose}
+      onPrevious={onPrevious}
+      onNext={onNext}
+      qualities={qualities}
+      activeQuality={activeQuality}
+      onSelectQuality={selectQuality}
+      isFullscreen={isFullscreen}
+      onToggleFullscreen={toggle}
+      menuOpen={menuOpen}
+      onMenuOpenChange={setMenuOpen}
+    />
+  )
+
+  const player = (
+    <MediaPlayer
+      ref={playerRef}
+      key={episode.id}
+      src={{ src: source, type: "video/mp4" }}
+      title={title}
+      aspectRatio="16/9"
+      playsInline
+      autoPlay={autoPlay}
+      fullscreenOrientation="landscape"
+      onTimeUpdate={handleTimeUpdate}
+      onCanPlay={handleCanPlay}
+      onPause={onPause}
+      className="h-full w-full"
+    >
+      <MediaProvider />
+      {controls}
+    </MediaPlayer>
+  )
+
+  if (isFullscreen && !usesRealFullscreen) {
+    return createPortal(
+      <div style={pseudoFullscreenStyle(needsCssRotation())}>{player}</div>,
+      document.body,
+    )
+  }
+
+  return <div className="relative overflow-hidden rounded-lg bg-black mb-4">{player}</div>
 }

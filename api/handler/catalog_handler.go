@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 
 	"github.com/go-chi/chi/v5"
 	"upanime/api/model"
@@ -299,8 +300,34 @@ func hasDownloadedEpisodes(a *model.Anime) bool {
 }
 
 func episodeStorageKeyForVariant(ep *model.Episode, variant string) string {
+	if variant == "" || variant == "original" {
+		return ep.StorageKey
+	}
 	if variant == "upscaled" {
 		return ep.UpscaledStorageKey
 	}
+
+	height, ok := parseVariantHeight(variant)
+	if !ok {
+		return ep.StorageKey
+	}
+
+	for _, v := range ep.UpscaledVariants {
+		if v.Height == height {
+			return v.StorageKey
+		}
+	}
+	if ep.UpscaledStorageKey != "" {
+		return ep.UpscaledStorageKey
+	}
 	return ep.StorageKey
+}
+
+func parseVariantHeight(variant string) (int, bool) {
+	trimmed := strings.TrimSuffix(variant, "p")
+	height, err := strconv.Atoi(trimmed)
+	if err != nil {
+		return 0, false
+	}
+	return height, true
 }

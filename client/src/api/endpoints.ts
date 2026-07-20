@@ -90,8 +90,12 @@ export function deleteEpisode(id: string): Promise<void> {
   return apiFetch<void>(`/catalog/episode/${id}`, { method: "DELETE" })
 }
 
+export function streamFileURL(id: string, variant: string = "original"): string {
+  return `/api/catalog/episode/${id}/stream/file?variant=${variant}`
+}
+
 export function fetchEpisodeStreamURL(id: string, variant: EpisodeStreamVariant = "original"): Promise<{ url: string }> {
-  return Promise.resolve({ url: `/api/catalog/episode/${id}/stream/file?variant=${variant}` })
+  return Promise.resolve({ url: streamFileURL(id, variant) })
 }
 
 export function episodeThumbnailURL(id: string): string {

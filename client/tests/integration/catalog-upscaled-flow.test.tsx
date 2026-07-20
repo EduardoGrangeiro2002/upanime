@@ -12,18 +12,21 @@ async function openCatalog(user: ReturnType<typeof userEvent.setup>) {
 }
 
 describe("Catalog Upscaled Flow", () => {
-  it("shows original and upscaled controls for episodes with upscaled assets", async () => {
+  it("offers quality options in the gear menu for episodes with upscaled assets", async () => {
     const user = userEvent.setup()
     await openCatalog(user)
 
     await user.click(screen.getAllByRole("button", { name: /Abrir Shingeki no Kyojin/i })[0])
     await user.click(screen.getByRole("button", { name: /Assistir Episódio 01/i }))
 
-    await waitFor(() => {
-      const dialog = screen.getByRole("dialog")
-      expect(within(dialog).getByRole("button", { name: "Original" })).toBeInTheDocument()
-      expect(within(dialog).getByRole("button", { name: "Upscale" })).toBeInTheDocument()
-    })
+    const dialog = screen.getByRole("dialog")
+    const gear = await within(dialog).findByRole("button", { name: "Qualidade" })
+    await user.click(gear)
+
+    const menu = within(dialog).getByRole("menu")
+    expect(within(menu).getByRole("menuitemradio", { name: /Original/ })).toBeInTheDocument()
+    expect(within(menu).getByRole("menuitemradio", { name: /4K/ })).toBeInTheDocument()
+    expect(within(menu).getByRole("menuitemradio", { name: /1080p/ })).toBeInTheDocument()
   })
 
   it("asks for confirmation before deleting the upscaled asset", async () => {
@@ -54,6 +57,6 @@ describe("Catalog Upscaled Flow", () => {
 
     const dialog = screen.getByRole("dialog")
     await within(dialog).findByRole("button", { name: /Fechar player/i })
-    expect(within(dialog).queryByRole("button", { name: "Upscale" })).not.toBeInTheDocument()
+    expect(within(dialog).queryByRole("button", { name: "Qualidade" })).not.toBeInTheDocument()
   })
 })

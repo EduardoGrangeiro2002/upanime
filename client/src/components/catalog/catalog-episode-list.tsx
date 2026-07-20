@@ -1,8 +1,8 @@
-import { useState, useRef, useEffect, useMemo } from "react"
-import type { Episode, EpisodeStreamVariant, Season, WatchProgressItem } from "@/api/types"
+import { useState, useRef, useEffect, useMemo, useCallback } from "react"
+import type { Episode, Season, WatchProgressItem } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Play, Sparkles, Trash2 } from "lucide-react"
-import { episodeThumbnailURL } from "@/api/endpoints"
+import { episodeThumbnailURL, streamFileURL } from "@/api/endpoints"
 import { useEpisodeStream } from "@/hooks/use-catalog"
 import { usePlaybackProgress, useWatchProgressList, buildProgressMap, progressPct } from "@/hooks/use-playback-progress"
 import { VideoPlayer } from "./video-player"
@@ -46,11 +46,10 @@ export function CatalogEpisodeList({
   const downloaded = season.episodes.filter((ep) => ep.storageKey)
   const [confirmKey, setConfirmKey] = useState<string | null>(null)
   const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null)
-  const [activeVariant, setActiveVariant] = useState<EpisodeStreamVariant>("original")
   const { data: progressList, isFetched: progressFetched } = useWatchProgressList()
   const progressMap = useMemo(() => buildProgressMap(progressList), [progressList])
   const autoPickedRef = useRef(false)
-  const { data: streamData } = useEpisodeStream(activeEpisodeId, activeVariant)
+  const { data: streamData } = useEpisodeStream(activeEpisodeId, "original")
   const { savedTime, ready, handleTimeUpdate, flush } = usePlaybackProgress(activeEpisodeId)
   const listRef = useRef<HTMLDivElement>(null)
 
@@ -76,8 +75,12 @@ export function CatalogEpisodeList({
     const ep = downloaded[index]
     if (!ep) return
     setActiveEpisodeId(ep.id)
-    setActiveVariant("original")
   }
+
+  const resolveVariantUrl = useCallback(
+    (variant: string) => (activeEpisode ? streamFileURL(activeEpisode.id, variant) : ""),
+    [activeEpisode],
+  )
 
   useEffect(() => {
     if (activeIndex < 0 || !listRef.current) return
@@ -88,38 +91,19 @@ export function CatalogEpisodeList({
   return (
     <div className="space-y-3">
       {activeEpisode && streamData?.url && ready && (
-        <div className="space-y-2">
-          {activeEpisode.upscaledStorageKey && (
-            <div className="flex items-center gap-2" role="group" aria-label="Versão do vídeo">
-              <Button
-                size="sm"
-                variant={activeVariant === "original" ? "default" : "outline"}
-                onClick={() => setActiveVariant("original")}
-              >
-                Original
-              </Button>
-              <Button
-                size="sm"
-                variant={activeVariant === "upscaled" ? "default" : "outline"}
-                onClick={() => setActiveVariant("upscaled")}
-              >
-                Upscale
-              </Button>
-            </div>
-          )}
-          <VideoPlayer
-            src={streamData.url}
-            title={activeTitle}
-            episodeId={activeEpisode.id}
-            autoPlay
-            onClose={() => setActiveEpisodeId(null)}
-            onPrevious={hasPrevious ? () => goToEpisode(activeIndex - 1) : undefined}
-            onNext={hasNext ? () => goToEpisode(activeIndex + 1) : undefined}
-            initialTime={savedTime}
-            onTimeUpdate={handleTimeUpdate}
-            onPause={flush}
-          />
-        </div>
+        <VideoPlayer
+          src={streamData.url}
+          title={activeTitle}
+          episode={activeEpisode}
+          resolveVariantUrl={resolveVariantUrl}
+          autoPlay
+          onClose={() => setActiveEpisodeId(null)}
+          onPrevious={hasPrevious ? () => goToEpisode(activeIndex - 1) : undefined}
+          onNext={hasNext ? () => goToEpisode(activeIndex + 1) : undefined}
+          initialTime={savedTime}
+          onTimeUpdate={handleTimeUpdate}
+          onPause={flush}
+        />
       )}
 
       <h3 className="text-sm font-medium text-muted-foreground">
@@ -151,10 +135,7 @@ export function CatalogEpisodeList({
               </span>
 
               <button
-                onClick={() => {
-                  setActiveEpisodeId(ep.id)
-                  setActiveVariant("original")
-                }}
+                onClick={() => setActiveEpisodeId(ep.id)}
                 aria-label={`Assistir ${label}`}
                 className="relative shrink-0 h-[56px] w-[100px] rounded-lg bg-surface-high overflow-hidden group/play cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               >

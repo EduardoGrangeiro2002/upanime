@@ -25,6 +25,15 @@ export function getMockWatchProgress(episodeId: string) {
   return watchProgress.get(episodeId)
 }
 
+function resolveVariantKey(episode: { storageKey?: string; upscaledStorageKey?: string; upscaledVariants?: { height: number; storageKey: string }[] }, variant: string) {
+  if (variant === "" || variant === "original") return episode.storageKey
+  if (variant === "upscaled") return episode.upscaledStorageKey
+  const height = parseInt(variant.replace("p", ""), 10)
+  if (Number.isNaN(height)) return episode.storageKey
+  const match = episode.upscaledVariants?.find((v) => v.height === height)
+  return match?.storageKey ?? episode.upscaledStorageKey ?? episode.storageKey
+}
+
 function findCatalogEpisode(id: string) {
   for (const anime of catalogAnimes) {
     for (const season of anime.seasons) {
@@ -259,7 +268,7 @@ export const handlers = [
     }
 
     const variant = new URL(request.url).searchParams.get("variant") ?? "original"
-    const storageKey = variant === "upscaled" ? found.episode.upscaledStorageKey : found.episode.storageKey
+    const storageKey = resolveVariantKey(found.episode, variant)
     if (!storageKey) {
       return HttpResponse.json({ error: "Stream not available" }, { status: 404 })
     }
@@ -304,6 +313,7 @@ export const handlers = [
     }
 
     found.episode.upscaledStorageKey = undefined
+    found.episode.upscaledVariants = undefined
     return new HttpResponse(null, { status: 204 })
   }),
 

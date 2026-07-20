@@ -112,10 +112,18 @@ export function createCatalogAnimes(): Anime[] {
         const baseKey = `animes/${anime.id}/${episode.id}.mp4`
         const hasOriginal = animeIndex === 0 ? episodeIndex < 3 : animeIndex === 1 && seasonIndex === 0 && episodeIndex < 2
         const hasUpscaled = animeIndex === 0 && seasonIndex === 0 && episodeIndex === 0
+        const upscaledKey = baseKey.replace(".mp4", "_upscaled.mp4")
         return {
           ...episode,
           storageKey: hasOriginal ? baseKey : undefined,
-          upscaledStorageKey: hasUpscaled ? baseKey.replace(".mp4", "_upscaled.mp4") : undefined,
+          upscaledStorageKey: hasUpscaled ? upscaledKey : undefined,
+          upscaledVariants: hasUpscaled
+            ? [
+                { height: 2160, storageKey: upscaledKey },
+                { height: 1440, storageKey: upscaledKey.replace(".mp4", "_1440p.mp4") },
+                { height: 1080, storageKey: upscaledKey.replace(".mp4", "_1080p.mp4") },
+              ]
+            : undefined,
         }
       }),
     })),

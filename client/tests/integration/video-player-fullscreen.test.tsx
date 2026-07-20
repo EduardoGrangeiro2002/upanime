@@ -1,93 +1,75 @@
-import { describe, expect, it, afterEach } from "vitest"
+import { describe, expect, it, vi } from "vitest"
 import { render, act } from "@testing-library/react"
-import { VideoPlayer, needsRotatedFullscreen } from "../../src/components/catalog/video-player"
+import { VideoPlayer, enterNativeFullscreen } from "../../src/components/catalog/video-player"
 
-function setFullscreenEnabled(value: boolean | undefined) {
-  Object.defineProperty(document, "fullscreenEnabled", { value, configurable: true })
+function makeRequestEvent() {
+  return new Event("media-enter-fullscreen-request", { bubbles: true, cancelable: true })
 }
 
-function setOrientationLock(lock: (() => Promise<void>) | undefined) {
-  Object.defineProperty(screen, "orientation", {
-    value: lock ? { lock } : undefined,
-    configurable: true,
-  })
-}
+describe("enterNativeFullscreen", () => {
+  it("calls webkitEnterFullscreen and stops the event on iOS video", () => {
+    const enter = vi.fn()
+    const video = Object.assign(document.createElement("video"), { webkitEnterFullscreen: enter })
+    const event = makeRequestEvent()
 
-function renderPlayer() {
-  return render(
-    <VideoPlayer src="/video.mp4" title="Ep 1" episodeId="ep-1" onClose={() => {}} />,
-  )
-}
+    const handled = enterNativeFullscreen(video, event)
 
-function dispatchFullscreenRequest(container: HTMLElement) {
-  const player = container.querySelector("[data-media-player]")
-  expect(player).not.toBeNull()
-  const event = new Event("media-enter-fullscreen-request", { bubbles: true, cancelable: true })
-  act(() => {
-    player!.dispatchEvent(event)
-  })
-  return event
-}
-
-afterEach(() => {
-  setFullscreenEnabled(undefined)
-  setOrientationLock(undefined)
-})
-
-describe("needsRotatedFullscreen", () => {
-  it("is false when the fullscreen api is available", () => {
-    setFullscreenEnabled(true)
-    expect(needsRotatedFullscreen()).toBe(false)
-  })
-
-  it("is false when orientation lock is available", () => {
-    setFullscreenEnabled(false)
-    setOrientationLock(async () => {})
-    expect(needsRotatedFullscreen()).toBe(false)
-  })
-
-  it("is true when neither fullscreen nor orientation lock exist", () => {
-    setFullscreenEnabled(false)
-    setOrientationLock(undefined)
-    expect(needsRotatedFullscreen()).toBe(true)
-  })
-})
-
-describe("VideoPlayer rotated fullscreen", () => {
-  it("intercepts the fullscreen request and rotates to landscape on iPhone-like devices", () => {
-    setFullscreenEnabled(false)
-    setOrientationLock(undefined)
-    const { container } = renderPlayer()
-
-    const event = dispatchFullscreenRequest(container)
-
+    expect(handled).toBe(true)
+    expect(enter).toHaveBeenCalledOnce()
     expect(event.defaultPrevented).toBe(true)
-    const wrapper = container.firstElementChild as HTMLElement
-    expect(wrapper.className).toContain("fixed")
-    expect(container.querySelector(".rotate-90")).not.toBeNull()
   })
 
-  it("toggles back to inline on a second request", () => {
-    setFullscreenEnabled(false)
-    setOrientationLock(undefined)
-    const { container } = renderPlayer()
+  it("does nothing when the video lacks native fullscreen", () => {
+    const video = document.createElement("video")
+    const event = makeRequestEvent()
 
-    dispatchFullscreenRequest(container)
-    dispatchFullscreenRequest(container)
+    const handled = enterNativeFullscreen(video, event)
 
-    const wrapper = container.firstElementChild as HTMLElement
-    expect(wrapper.className).toContain("relative")
-    expect(container.querySelector(".rotate-90")).toBeNull()
+    expect(handled).toBe(false)
+    expect(event.defaultPrevented).toBe(false)
   })
 
-  it("does not intercept when real fullscreen is available", () => {
-    setFullscreenEnabled(true)
-    const { container } = renderPlayer()
+  it("does nothing when there is no video element", () => {
+    const event = makeRequestEvent()
+    expect(enterNativeFullscreen(null, event)).toBe(false)
+    expect(event.defaultPrevented).toBe(false)
+  })
+})
 
-    const event = dispatchFullscreenRequest(container)
+describe("VideoPlayer fullscreen wiring", () => {
+  it("routes the fullscreen request to the native video on iPhone-like devices", () => {
+    const enter = vi.fn()
+    const { container } = render(
+      <VideoPlayer src="/video.mp4" title="Ep 1" episodeId="ep-1" onClose={() => {}} />,
+    )
+
+    const wrapper = container.firstElementChild as HTMLElement
+    const provider = wrapper.querySelector("[data-media-provider]") ?? wrapper
+    const video = Object.assign(document.createElement("video"), { webkitEnterFullscreen: enter })
+    provider.appendChild(video)
+
+    const player = wrapper.querySelector("[data-media-player]")
+    const event = makeRequestEvent()
+    act(() => {
+      player!.dispatchEvent(event)
+    })
+
+    expect(enter).toHaveBeenCalledOnce()
+    expect(event.defaultPrevented).toBe(true)
+  })
+
+  it("leaves the request untouched when native fullscreen is unavailable", () => {
+    const { container } = render(
+      <VideoPlayer src="/video.mp4" title="Ep 1" episodeId="ep-1" onClose={() => {}} />,
+    )
+
+    const wrapper = container.firstElementChild as HTMLElement
+    const player = wrapper.querySelector("[data-media-player]")
+    const event = makeRequestEvent()
+    act(() => {
+      player!.dispatchEvent(event)
+    })
 
     expect(event.defaultPrevented).toBe(false)
-    const wrapper = container.firstElementChild as HTMLElement
-    expect(wrapper.className).toContain("relative")
   })
 })

@@ -85,6 +85,8 @@ func main() {
 	thumbnailService := service.NewThumbnailService(fs, nil)
 	thumbnailHandler := handler.NewThumbnailHandler(episodeStore, thumbnailService, fs)
 
+	progressHandler := handler.NewProgressHandler(store.NewSQLiteWatchProgressStore(database))
+
 	mlDatasetPath := cfg.MLDatasetPath
 	if mlDatasetPath == "" {
 		mlDatasetPath = filepath.Join(filepath.Dir(cfg.DatabasePath), "ml_dataset.db")
@@ -174,6 +176,10 @@ func main() {
 		pr.Get("/api/catalog/episode/{id}/stream", catalogHandler.StreamURL)
 		pr.Get("/api/catalog/episode/{id}/stream/file", catalogHandler.StreamFile)
 		pr.Get("/api/catalog/episode/{id}/thumbnail", thumbnailHandler.Get)
+
+		pr.Get("/api/progress", progressHandler.List)
+		pr.Get("/api/progress/episode/{id}", progressHandler.Get)
+		pr.Put("/api/progress/episode/{id}", progressHandler.Update)
 
 		pr.Post("/api/upscale", editionHandler.Create)
 		pr.Get("/api/upscale", editionHandler.List)

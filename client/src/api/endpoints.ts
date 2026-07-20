@@ -1,5 +1,5 @@
 import { apiFetch } from "./client"
-import type { Anime, AuthStep, DatasetSample, DatasetStats, DatasetVerdict, Download, DownloadRequest, EpisodeStreamVariant, Me, UploadEpisodeParams, UploadEpisodeResponse, UpscaleJob, UpscaleRequest, UserSummary } from "./types"
+import type { Anime, AuthStep, DatasetSample, DatasetStats, DatasetVerdict, Download, DownloadRequest, EpisodeProgress, EpisodeStreamVariant, Me, UploadEpisodeParams, UploadEpisodeResponse, UpscaleJob, UpscaleRequest, UserSummary, WatchProgressItem } from "./types"
 
 export function authLogin(email: string, password: string): Promise<{ step: AuthStep }> {
   return apiFetch<{ step: AuthStep }>("/auth/login", {
@@ -96,6 +96,22 @@ export function fetchEpisodeStreamURL(id: string, variant: EpisodeStreamVariant 
 
 export function episodeThumbnailURL(id: string): string {
   return `/api/catalog/episode/${id}/thumbnail`
+}
+
+export function fetchWatchProgressList(): Promise<WatchProgressItem[]> {
+  return apiFetch<WatchProgressItem[]>("/progress")
+}
+
+export function fetchEpisodeProgress(id: string): Promise<EpisodeProgress> {
+  return apiFetch<EpisodeProgress>(`/progress/episode/${id}`)
+}
+
+export function saveEpisodeProgress(id: string, position: number, duration: number): Promise<void> {
+  return apiFetch<void>(`/progress/episode/${id}`, {
+    method: "PUT",
+    body: JSON.stringify({ position, duration }),
+    keepalive: true,
+  })
 }
 
 export function startUpscale(req: UpscaleRequest): Promise<UpscaleJob[]> {

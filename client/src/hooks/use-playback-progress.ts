@@ -1,80 +1,94 @@
-import { useCallback, useRef } from "react"
+import { useCallback, useEffect, useRef } from "react"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+import { fetchEpisodeProgress, fetchWatchProgressList, saveEpisodeProgress } from "@/api/endpoints"
+import type { WatchProgressItem } from "@/api/types"
 
-const STORAGE_KEY = "upanime:playback-progress"
-const SAVE_INTERVAL_MS = 5000
+const REPORT_INTERVAL_MS = 10_000
+const MIN_RESUME_SECONDS = 5
 const COMPLETED_THRESHOLD = 0.95
 
-interface ProgressEntry {
-  t: number
-  d: number
+export function resumeTime(position: number, duration: number): number {
+  if (position <= MIN_RESUME_SECONDS) return 0
+  if (duration > 0 && position / duration >= COMPLETED_THRESHOLD) return 0
+  return position
 }
 
-type StoredProgress = number | ProgressEntry
-
-interface ProgressMap {
-  [episodeId: string]: StoredProgress
+export function progressPct(position: number, duration: number): number {
+  if (position <= 0) return 0
+  if (duration <= 0) return 0
+  return Math.min(100, Math.round((position / duration) * 100))
 }
 
-function loadAll(): ProgressMap {
-  try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}")
-  } catch {
-    return {}
+export function buildProgressMap(items: WatchProgressItem[] | undefined): Record<string, WatchProgressItem> {
+  const map: Record<string, WatchProgressItem> = {}
+  for (const item of items ?? []) {
+    map[item.episodeId] = item
   }
+  return map
 }
 
-function persistAll(map: ProgressMap) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(map))
-}
-
-export function normalizeEntry(entry: StoredProgress | undefined): ProgressEntry {
-  if (entry === undefined) return { t: 0, d: 0 }
-  if (typeof entry === "number") return { t: entry, d: 0 }
-  return entry
-}
-
-export function getProgress(episodeId: string): number {
-  return normalizeEntry(loadAll()[episodeId]).t
-}
-
-export function getProgressPct(episodeId: string): number {
-  const { t, d } = normalizeEntry(loadAll()[episodeId])
-  if (t <= 0) return 0
-  if (d <= 0) return 0
-  return Math.min(100, Math.round((t / d) * 100))
-}
-
-export function clearProgress(episodeId: string) {
-  const map = loadAll()
-  delete map[episodeId]
-  persistAll(map)
+export function useWatchProgressList() {
+  return useQuery({
+    queryKey: ["watch-progress"],
+    queryFn: fetchWatchProgressList,
+    staleTime: 30 * 1000,
+    meta: { silentError: true },
+  })
 }
 
 export function usePlaybackProgress(episodeId: string | null) {
-  const lastSaveRef = useRef(0)
+  const queryClient = useQueryClient()
+  const lastReportAtRef = useRef(0)
+  const latestRef = useRef<{ position: number; duration: number } | null>(null)
 
-  const savedTime = episodeId ? getProgress(episodeId) : 0
+  const { data, isFetched } = useQuery({
+    queryKey: ["episode-progress", episodeId],
+    queryFn: () => fetchEpisodeProgress(episodeId!),
+    enabled: episodeId !== null,
+    retry: false,
+    meta: { silentError: true },
+  })
 
-  const handleTimeUpdate = useCallback(
-    (time: number) => {
+  const report = useCallback(
+    (position: number, duration: number) => {
       if (!episodeId) return
-      const now = Date.now()
-      if (now - lastSaveRef.current < SAVE_INTERVAL_MS) return
-      lastSaveRef.current = now
-
-      const player = document.querySelector("media-player") as HTMLElement & { duration?: number } | null
-      const duration = player?.duration ?? 0
-      if (duration > 0 && time / duration > COMPLETED_THRESHOLD) {
-        clearProgress(episodeId)
-        return
-      }
-
-      const map = loadAll()
-      map[episodeId] = { t: Math.floor(time), d: Math.floor(duration) }
-      persistAll(map)
+      saveEpisodeProgress(episodeId, position, duration)
+        .then(() => queryClient.invalidateQueries({ queryKey: ["watch-progress"] }))
+        .catch(() => undefined)
     },
-    [episodeId],
+    [episodeId, queryClient],
   )
 
-  return { savedTime, handleTimeUpdate }
+  const handleTimeUpdate = useCallback(
+    (position: number, duration: number) => {
+      latestRef.current = { position, duration }
+      const now = Date.now()
+      if (now - lastReportAtRef.current < REPORT_INTERVAL_MS) return
+      lastReportAtRef.current = now
+      report(position, duration)
+    },
+    [report],
+  )
+
+  const flush = useCallback(() => {
+    const latest = latestRef.current
+    if (!latest) return
+    lastReportAtRef.current = Date.now()
+    report(latest.position, latest.duration)
+  }, [report])
+
+  useEffect(() => {
+    latestRef.current = null
+    lastReportAtRef.current = Date.now()
+    return flush
+  }, [episodeId, flush])
+
+  useEffect(() => {
+    window.addEventListener("pagehide", flush)
+    return () => window.removeEventListener("pagehide", flush)
+  }, [flush])
+
+  const savedTime = data ? resumeTime(data.position, data.duration) : 0
+
+  return { savedTime, ready: episodeId === null || isFetched, handleTimeUpdate, flush }
 }

@@ -45,6 +45,22 @@ export interface Episode {
   upscaledStorageKey?: string
 }
 
+export interface EpisodeProgress {
+  position: number
+  duration: number
+  updatedAt: string
+}
+
+export interface WatchProgressItem extends EpisodeProgress {
+  episodeId: string
+  animeId: string
+  animeTitle: string
+  animeImageUrl: string
+  episodeTitle: string
+  episodeNumber: string
+  seasonNumber: number
+}
+
 export interface Download {
   id: string
   animeId: string

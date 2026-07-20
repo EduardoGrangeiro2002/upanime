@@ -13,7 +13,8 @@ interface VideoPlayerProps {
   onPrevious?: () => void
   onNext?: () => void
   initialTime?: number
-  onTimeUpdate?: (time: number) => void
+  onTimeUpdate?: (time: number, duration: number) => void
+  onPause?: () => void
 }
 
 export function VideoPlayer({
@@ -26,6 +27,7 @@ export function VideoPlayer({
   onNext,
   initialTime,
   onTimeUpdate,
+  onPause,
 }: VideoPlayerProps) {
   const playerRef = useRef<MediaPlayerInstance>(null)
   const seekedRef = useRef(false)
@@ -33,7 +35,7 @@ export function VideoPlayer({
   const handleTimeUpdate = useCallback(() => {
     const player = playerRef.current
     if (!player) return
-    onTimeUpdate?.(player.currentTime)
+    onTimeUpdate?.(player.currentTime, player.duration)
   }, [onTimeUpdate])
 
   useEffect(() => {
@@ -97,6 +99,7 @@ export function VideoPlayer({
         autoPlay={autoPlay}
         onTimeUpdate={handleTimeUpdate}
         onCanPlay={handleCanPlay}
+        onPause={onPause}
       >
         <MediaProvider />
         <DefaultVideoLayout icons={defaultLayoutIcons} colorScheme="dark" />

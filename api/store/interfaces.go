@@ -44,6 +44,12 @@ type EpisodeStore interface {
 	UpdateUpscaledVariants(ctx context.Context, id int64, variants []model.EpisodeVariant) error
 }
 
+type WatchProgressStore interface {
+	Upsert(ctx context.Context, email string, episodeID int64, position, duration float64) error
+	Get(ctx context.Context, email string, episodeID int64) (*model.WatchProgress, error)
+	ListInProgress(ctx context.Context, email string, limit int) ([]model.WatchProgress, error)
+}
+
 type ScraperStore interface {
 	FindByDomain(ctx context.Context, domain string) (*model.Scraper, error)
 }

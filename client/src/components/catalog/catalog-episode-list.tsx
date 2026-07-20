@@ -1,10 +1,10 @@
-import { useState, useRef, useEffect } from "react"
-import type { Episode, EpisodeStreamVariant, Season } from "@/api/types"
+import { useState, useRef, useEffect, useMemo } from "react"
+import type { Episode, EpisodeStreamVariant, Season, WatchProgressItem } from "@/api/types"
 import { Button } from "@/components/ui/button"
 import { Play, Sparkles, Trash2 } from "lucide-react"
 import { episodeThumbnailURL } from "@/api/endpoints"
 import { useEpisodeStream } from "@/hooks/use-catalog"
-import { usePlaybackProgress, getProgress, getProgressPct } from "@/hooks/use-playback-progress"
+import { usePlaybackProgress, useWatchProgressList, buildProgressMap, progressPct } from "@/hooks/use-playback-progress"
 import { VideoPlayer } from "./video-player"
 
 interface CatalogEpisodeListProps {
@@ -24,8 +24,8 @@ function episodeLabel(number: string, type: string, index: number): string {
   return `Episódio ${num.padStart(2, "0")}`
 }
 
-function pickInitialEpisode(episodes: Episode[]): string | null {
-  const inProgress = episodes.find((ep) => getProgress(ep.id) > 0)
+function pickInitialEpisode(episodes: Episode[], progressMap: Record<string, WatchProgressItem>): string | null {
+  const inProgress = episodes.find((ep) => (progressMap[ep.id]?.position ?? 0) > 0)
   if (inProgress) return inProgress.id
   return episodes[0]?.id ?? null
 }
@@ -45,13 +45,20 @@ export function CatalogEpisodeList({
 }: CatalogEpisodeListProps) {
   const downloaded = season.episodes.filter((ep) => ep.storageKey)
   const [confirmKey, setConfirmKey] = useState<string | null>(null)
-  const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(() =>
-    autoPlayOnOpen ? pickInitialEpisode(downloaded) : null,
-  )
+  const [activeEpisodeId, setActiveEpisodeId] = useState<string | null>(null)
   const [activeVariant, setActiveVariant] = useState<EpisodeStreamVariant>("original")
+  const { data: progressList, isFetched: progressFetched } = useWatchProgressList()
+  const progressMap = useMemo(() => buildProgressMap(progressList), [progressList])
+  const autoPickedRef = useRef(false)
   const { data: streamData } = useEpisodeStream(activeEpisodeId, activeVariant)
-  const { savedTime, handleTimeUpdate } = usePlaybackProgress(activeEpisodeId)
+  const { savedTime, ready, handleTimeUpdate, flush } = usePlaybackProgress(activeEpisodeId)
   const listRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    if (!autoPlayOnOpen || autoPickedRef.current || !progressFetched) return
+    autoPickedRef.current = true
+    setActiveEpisodeId(pickInitialEpisode(downloaded, progressMap))
+  }, [autoPlayOnOpen, progressFetched, downloaded, progressMap])
 
   const activeIndex = activeEpisodeId
     ? downloaded.findIndex((ep) => ep.id === activeEpisodeId)
@@ -80,7 +87,7 @@ export function CatalogEpisodeList({
 
   return (
     <div className="space-y-3">
-      {activeEpisode && streamData?.url && (
+      {activeEpisode && streamData?.url && ready && (
         <div className="space-y-2">
           {activeEpisode.upscaledStorageKey && (
             <div className="flex items-center gap-2" role="group" aria-label="Versão do vídeo">
@@ -110,6 +117,7 @@ export function CatalogEpisodeList({
             onNext={hasNext ? () => goToEpisode(activeIndex + 1) : undefined}
             initialTime={savedTime}
             onTimeUpdate={handleTimeUpdate}
+            onPause={flush}
           />
         </div>
       )}
@@ -124,8 +132,9 @@ export function CatalogEpisodeList({
       >
         {downloaded.map((ep, index) => {
           const label = episodeLabel(ep.number, ep.type, index)
-          const progressSeconds = getProgress(ep.id)
-          const progressPct = getProgressPct(ep.id)
+          const entry = progressMap[ep.id]
+          const progressSeconds = entry?.position ?? 0
+          const pct = entry ? progressPct(entry.position, entry.duration) : 0
           const isActive = ep.id === activeEpisodeId
 
           return (
@@ -163,11 +172,11 @@ export function CatalogEpisodeList({
                     <Play className="h-3.5 w-3.5 fill-white text-white ml-0.5" aria-hidden="true" />
                   </div>
                 </div>
-                {progressPct > 0 && (
+                {pct > 0 && (
                   <div className="absolute bottom-0 left-0 right-0 h-[3px] bg-white/20">
                     <div
                       className="h-full bg-primary"
-                      style={{ width: `${progressPct}%` }}
+                      style={{ width: `${pct}%` }}
                       data-testid={`progress-${ep.id}`}
                     />
                   </div>

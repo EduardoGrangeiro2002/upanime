@@ -1,72 +1,65 @@
-import { describe, it, expect, beforeEach } from "vitest"
-import { getProgress, getProgressPct, clearProgress } from "../../src/hooks/use-playback-progress"
+import { describe, expect, it } from "vitest"
+import { resumeTime, progressPct, buildProgressMap } from "../../src/hooks/use-playback-progress"
+import type { WatchProgressItem } from "../../src/api/types"
 
-const STORAGE_KEY = "upanime:playback-progress"
+function item(episodeId: string, position: number, duration: number): WatchProgressItem {
+  return {
+    episodeId,
+    animeId: "a1",
+    animeTitle: "Anime",
+    animeImageUrl: "",
+    episodeTitle: "Ep",
+    episodeNumber: "1",
+    seasonNumber: 1,
+    position,
+    duration,
+    updatedAt: "2026-07-20T10:00:00Z",
+  }
+}
 
-beforeEach(() => {
-  localStorage.clear()
+describe("resumeTime", () => {
+  it("starts from zero when position is at most 5 seconds", () => {
+    expect(resumeTime(0, 1400)).toBe(0)
+    expect(resumeTime(5, 1400)).toBe(0)
+  })
+
+  it("resumes from the saved position mid-episode", () => {
+    expect(resumeTime(120, 1400)).toBe(120)
+  })
+
+  it("starts from zero when the episode is nearly finished", () => {
+    expect(resumeTime(1330, 1400)).toBe(0)
+    expect(resumeTime(1400, 1400)).toBe(0)
+  })
+
+  it("resumes past 5 seconds when duration is unknown", () => {
+    expect(resumeTime(120, 0)).toBe(120)
+  })
 })
 
-describe("getProgress", () => {
-  it("returns 0 when no progress is stored", () => {
-    expect(getProgress("ep-1")).toBe(0)
+describe("progressPct", () => {
+  it("returns 0 without position or duration", () => {
+    expect(progressPct(0, 1400)).toBe(0)
+    expect(progressPct(120, 0)).toBe(0)
   })
 
-  it("returns the stored time for an episode", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": 120 }))
-    expect(getProgress("ep-1")).toBe(120)
-  })
-
-  it("returns 0 for a different episode", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": 120 }))
-    expect(getProgress("ep-2")).toBe(0)
-  })
-
-  it("returns 0 when localStorage contains invalid JSON", () => {
-    localStorage.setItem(STORAGE_KEY, "not json")
-    expect(getProgress("ep-1")).toBe(0)
-  })
-})
-
-describe("getProgress with duration entries", () => {
-  it("returns the stored time from an entry with duration", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": { t: 300, d: 1440 } }))
-    expect(getProgress("ep-1")).toBe(300)
-  })
-})
-
-describe("getProgressPct", () => {
-  it("returns 0 when nothing is stored", () => {
-    expect(getProgressPct("ep-1")).toBe(0)
-  })
-
-  it("computes percentage from time and duration", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": { t: 360, d: 1440 } }))
-    expect(getProgressPct("ep-1")).toBe(25)
+  it("computes the rounded percentage", () => {
+    expect(progressPct(350, 1400)).toBe(25)
   })
 
   it("caps at 100", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": { t: 2000, d: 1440 } }))
-    expect(getProgressPct("ep-1")).toBe(100)
-  })
-
-  it("returns 0 for legacy entries without duration instead of guessing", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": 500 }))
-    expect(getProgressPct("ep-1")).toBe(0)
+    expect(progressPct(2000, 1400)).toBe(100)
   })
 })
 
-describe("clearProgress", () => {
-  it("removes progress for a specific episode", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": 120, "ep-2": 60 }))
-    clearProgress("ep-1")
-    expect(getProgress("ep-1")).toBe(0)
-    expect(getProgress("ep-2")).toBe(60)
+describe("buildProgressMap", () => {
+  it("indexes items by episode id", () => {
+    const map = buildProgressMap([item("ep-1", 120, 1400), item("ep-2", 60, 1400)])
+    expect(map["ep-1"].position).toBe(120)
+    expect(map["ep-2"].position).toBe(60)
   })
 
-  it("does nothing when episode has no progress", () => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ "ep-1": 120 }))
-    clearProgress("ep-999")
-    expect(getProgress("ep-1")).toBe(120)
+  it("returns an empty map for undefined", () => {
+    expect(buildProgressMap(undefined)).toEqual({})
   })
 })

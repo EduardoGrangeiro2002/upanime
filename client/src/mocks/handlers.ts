@@ -8,11 +8,21 @@ let upscaleJobs: UpscaleJob[] = []
 let mockUsers = [
   { email: "admin@upanime.dev", isAdmin: true, pending: false },
 ]
+let watchProgress = new Map<string, { position: number; duration: number; updatedAt: string }>()
 
 export function resetMockState() {
   catalogAnimes = createCatalogAnimes()
   upscaleJobs = []
   mockUsers = [{ email: "admin@upanime.dev", isAdmin: true, pending: false }]
+  watchProgress = new Map()
+}
+
+export function seedWatchProgress(episodeId: string, position: number, duration: number) {
+  watchProgress.set(episodeId, { position, duration, updatedAt: new Date().toISOString() })
+}
+
+export function getMockWatchProgress(episodeId: string) {
+  return watchProgress.get(episodeId)
 }
 
 function findCatalogEpisode(id: string) {
@@ -198,6 +208,47 @@ export const handlers = [
     episode.storageKey = `animes/${slug}/s${seasonNumber}e${episodeNumber}.mp4`
 
     return HttpResponse.json({ animeId: anime.id, episode, replaced })
+  }),
+
+  http.get("/api/progress", async () => {
+    const items = [...watchProgress.entries()]
+      .filter(([, p]) => p.position > 5 && (p.duration <= 0 || p.position < p.duration * 0.95))
+      .sort((a, b) => b[1].updatedAt.localeCompare(a[1].updatedAt))
+      .slice(0, 20)
+      .map(([episodeId, p]) => {
+        const found = findCatalogEpisode(episodeId)
+        return {
+          episodeId,
+          animeId: found?.anime.id ?? "",
+          animeTitle: found?.anime.title ?? "",
+          animeImageUrl: found?.anime.imageUrl ?? "",
+          episodeTitle: found?.episode.title ?? "",
+          episodeNumber: found?.episode.number ?? "",
+          seasonNumber: found?.episode.seasonNumber ?? 0,
+          position: p.position,
+          duration: p.duration,
+          updatedAt: p.updatedAt,
+        }
+      })
+    return HttpResponse.json(items)
+  }),
+
+  http.get("/api/progress/episode/:id", async ({ params }) => {
+    const entry = watchProgress.get(String(params.id))
+    if (!entry) {
+      return HttpResponse.json({ error: "progresso não encontrado" }, { status: 404 })
+    }
+    return HttpResponse.json({ episodeId: String(params.id), ...entry })
+  }),
+
+  http.put("/api/progress/episode/:id", async ({ params, request }) => {
+    const body = (await request.json()) as { position: number; duration: number }
+    watchProgress.set(String(params.id), {
+      position: body.position,
+      duration: body.duration,
+      updatedAt: new Date().toISOString(),
+    })
+    return new HttpResponse(null, { status: 204 })
   }),
 
   http.get("/api/catalog/episode/:id/stream", async ({ params, request }) => {

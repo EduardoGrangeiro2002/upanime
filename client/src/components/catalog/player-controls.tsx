@@ -2,7 +2,7 @@ import { useState, useEffect, useRef } from "react"
 import { PlayButton, MuteButton, SeekButton, TimeSlider, VolumeSlider, Time, useMediaState } from "@vidstack/react"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
-import { X, SkipBack, SkipForward, Play, Pause, Volume2, VolumeX, Rewind, FastForward, Settings, Maximize, Minimize } from "lucide-react"
+import { X, SkipBack, SkipForward, Play, Pause, Volume2, VolumeX, RotateCcw, RotateCw, Settings, Maximize, Minimize } from "lucide-react"
 import type { QualityOption } from "@/lib/quality"
 
 interface PlayerControlsProps {
@@ -17,6 +17,8 @@ interface PlayerControlsProps {
   menuOpen: boolean
   onMenuOpenChange: (open: boolean) => void
 }
+
+const barButton = "flex h-10 w-10 shrink-0 items-center justify-center rounded-md text-white transition hover:bg-white/10"
 
 export function PlayerControls({
   onClose,
@@ -37,50 +39,26 @@ export function PlayerControls({
 
   return (
     <>
-      <div className="pointer-events-none absolute top-2 right-2 z-50 flex items-center gap-1">
-        {onPrevious && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="pointer-events-auto h-10 w-10 md:h-8 md:w-8 bg-black/60 hover:bg-black/80 text-white"
-            onClick={onPrevious}
-            aria-label="Episódio anterior"
-            data-tooltip="Episódio anterior"
-          >
-            <SkipBack className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        )}
-        {onNext && (
-          <Button
-            variant="ghost"
-            size="icon"
-            className="pointer-events-auto h-10 w-10 md:h-8 md:w-8 bg-black/60 hover:bg-black/80 text-white"
-            onClick={onNext}
-            aria-label="Próximo episódio"
-            data-tooltip="Próximo episódio"
-          >
-            <SkipForward className="h-4 w-4" aria-hidden="true" />
-          </Button>
-        )}
-        <Button
-          variant="ghost"
-          size="icon"
-          className="pointer-events-auto h-10 w-10 md:h-8 md:w-8 bg-black/60 hover:bg-black/80 text-white"
-          onClick={onClose}
-          aria-label="Fechar player"
-          data-tooltip="Fechar player"
-          data-tooltip-pos="left"
-        >
-          <X className="h-4 w-4" aria-hidden="true" />
-        </Button>
-      </div>
-
       <div
         className={cn(
           "absolute inset-0 z-40 flex flex-col justify-end transition-opacity",
           visible ? "opacity-100" : "opacity-0",
         )}
       >
+        <div className="absolute top-2 right-2">
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-10 w-10 bg-black/60 text-white hover:bg-black/80"
+            onClick={onClose}
+            aria-label="Fechar player"
+            data-tooltip="Fechar player"
+            data-tooltip-pos="left"
+          >
+            <X className="h-4 w-4" aria-hidden="true" />
+          </Button>
+        </div>
+
         <div className="flex flex-1 items-center justify-center">
           <PlayButton
             className="flex h-16 w-16 items-center justify-center rounded-full bg-black/50 text-white transition hover:bg-primary hover:text-primary-foreground"
@@ -90,30 +68,27 @@ export function PlayerControls({
           </PlayButton>
         </div>
 
-        <div className="bg-gradient-to-t from-black/80 to-transparent px-3 pb-3 pt-8">
-          <TimeSlider.Root className="group relative mb-2 flex h-6 w-full items-center">
+        <div className="bg-gradient-to-t from-black/90 to-transparent px-3 pb-2 pt-8">
+          <TimeSlider.Root className="group relative flex h-6 w-full items-center">
             <TimeSlider.Track className="relative h-1 w-full rounded bg-white/30">
               <TimeSlider.TrackFill className="absolute h-full rounded bg-primary" />
             </TimeSlider.Track>
-            <TimeSlider.Thumb className="absolute h-3 w-3 rounded-full bg-primary opacity-0 transition group-hover:opacity-100" />
+            <TimeSlider.Thumb className="absolute h-3.5 w-3.5 rounded-full bg-primary" />
           </TimeSlider.Root>
 
-          <div className="flex items-center gap-2 text-white">
-            <SeekButton seconds={-10} className="flex h-9 w-9 items-center justify-center" aria-label="Voltar 10 segundos">
-              <Rewind className="h-5 w-5" aria-hidden="true" />
+          <div className="flex items-center gap-1 text-white">
+            <SeekButton seconds={-10} className={barButton} aria-label="Voltar 10 segundos">
+              <RotateCcw className="h-5 w-5" aria-hidden="true" />
             </SeekButton>
-            <SeekButton seconds={10} className="flex h-9 w-9 items-center justify-center" aria-label="Avançar 10 segundos">
-              <FastForward className="h-5 w-5" aria-hidden="true" />
+            <PlayButton className={barButton} aria-label={paused ? "Reproduzir" : "Pausar"}>
+              {paused ? <Play className="h-5 w-5" aria-hidden="true" /> : <Pause className="h-5 w-5" aria-hidden="true" />}
+            </PlayButton>
+            <SeekButton seconds={10} className={barButton} aria-label="Avançar 10 segundos">
+              <RotateCw className="h-5 w-5" aria-hidden="true" />
             </SeekButton>
 
-            <div className="ml-1 flex items-center gap-1 text-xs tabular-nums">
-              <Time type="current" />
-              <span>/</span>
-              <Time type="duration" />
-            </div>
-
-            <div className="hidden items-center gap-1 md:flex">
-              <MuteButton className="flex h-9 w-9 items-center justify-center" aria-label={muted ? "Ativar som" : "Silenciar"}>
+            <div className="hidden items-center md:flex">
+              <MuteButton className={barButton} aria-label={muted ? "Ativar som" : "Silenciar"}>
                 {muted ? <VolumeX className="h-5 w-5" aria-hidden="true" /> : <Volume2 className="h-5 w-5" aria-hidden="true" />}
               </MuteButton>
               <VolumeSlider.Root className="group relative flex h-6 w-20 items-center">
@@ -124,7 +99,23 @@ export function PlayerControls({
               </VolumeSlider.Root>
             </div>
 
+            <div className="ml-2 flex items-center gap-1 text-sm tabular-nums">
+              <Time type="current" />
+              <span className="text-white/60">/</span>
+              <Time type="duration" />
+            </div>
+
             <div className="ml-auto flex items-center gap-1">
+              {onPrevious && (
+                <button type="button" className={barButton} onClick={onPrevious} aria-label="Episódio anterior">
+                  <SkipBack className="h-5 w-5" aria-hidden="true" />
+                </button>
+              )}
+              {onNext && (
+                <button type="button" className={barButton} onClick={onNext} aria-label="Próximo episódio">
+                  <SkipForward className="h-5 w-5" aria-hidden="true" />
+                </button>
+              )}
               {qualities.length > 1 && (
                 <QualityMenu
                   qualities={qualities}
@@ -133,20 +124,70 @@ export function PlayerControls({
                   onOpenChange={onMenuOpenChange}
                 />
               )}
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-9 w-9 text-white hover:bg-white/10"
+              <button
+                type="button"
+                className={barButton}
                 onClick={onToggleFullscreen}
                 aria-label={isFullscreen ? "Sair da tela cheia" : "Tela cheia"}
               >
                 {isFullscreen ? <Minimize className="h-5 w-5" aria-hidden="true" /> : <Maximize className="h-5 w-5" aria-hidden="true" />}
-              </Button>
+              </button>
             </div>
           </div>
         </div>
       </div>
     </>
+  )
+}
+
+interface QualityMenuProps {
+  qualities: QualityOption[]
+  activeQuality: string
+  onSelect: (variant: string) => void
+  onOpenChange: (open: boolean) => void
+}
+
+function QualityMenu({ qualities, activeQuality, onSelect, onOpenChange }: QualityMenuProps) {
+  const [open, setOpen] = useState(false)
+
+  const setMenu = (next: boolean) => {
+    setOpen(next)
+    onOpenChange(next)
+  }
+
+  return (
+    <div className="relative">
+      <button
+        type="button"
+        className={barButton}
+        onClick={() => setMenu(!open)}
+        aria-label="Qualidade"
+        aria-haspopup="menu"
+        aria-expanded={open}
+      >
+        <Settings className="h-5 w-5" aria-hidden="true" />
+      </button>
+      {open && (
+        <div role="menu" className="absolute bottom-12 right-0 min-w-32 overflow-hidden rounded-lg bg-surface/95 py-1 shadow-2xl backdrop-blur-md">
+          {qualities.map((quality) => (
+            <button
+              key={quality.variant}
+              type="button"
+              role="menuitemradio"
+              aria-checked={quality.variant === activeQuality}
+              className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left text-sm text-white hover:bg-primary/20 aria-checked:text-primary"
+              onClick={() => {
+                onSelect(quality.variant)
+                setMenu(false)
+              }}
+            >
+              {quality.label}
+              {quality.variant === activeQuality && <span aria-hidden="true">✓</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   )
 }
 
@@ -175,56 +216,4 @@ function useAutoHide(canHide: boolean): boolean {
   }, [canHide])
 
   return visible
-}
-
-interface QualityMenuProps {
-  qualities: QualityOption[]
-  activeQuality: string
-  onSelect: (variant: string) => void
-  onOpenChange: (open: boolean) => void
-}
-
-function QualityMenu({ qualities, activeQuality, onSelect, onOpenChange }: QualityMenuProps) {
-  const [open, setOpen] = useState(false)
-
-  const setMenu = (next: boolean) => {
-    setOpen(next)
-    onOpenChange(next)
-  }
-
-  return (
-    <div className="relative">
-      <Button
-        variant="ghost"
-        size="icon"
-        className="h-9 w-9 text-white hover:bg-white/10"
-        onClick={() => setMenu(!open)}
-        aria-label="Qualidade"
-        aria-haspopup="menu"
-        aria-expanded={open}
-      >
-        <Settings className="h-5 w-5" aria-hidden="true" />
-      </Button>
-      {open && (
-        <div role="menu" className="absolute bottom-11 right-0 min-w-32 overflow-hidden rounded-lg bg-surface/95 py-1 shadow-2xl backdrop-blur-md">
-          {qualities.map((quality) => (
-            <button
-              key={quality.variant}
-              type="button"
-              role="menuitemradio"
-              aria-checked={quality.variant === activeQuality}
-              className="flex w-full items-center justify-between px-3 py-2 text-left text-sm text-white hover:bg-primary/20 aria-checked:text-primary"
-              onClick={() => {
-                onSelect(quality.variant)
-                setMenu(false)
-              }}
-            >
-              {quality.label}
-              {quality.variant === activeQuality && <span aria-hidden="true">✓</span>}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  )
 }

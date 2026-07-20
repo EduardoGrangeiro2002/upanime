@@ -3,7 +3,7 @@ import { createPortal } from "react-dom"
 import { MediaPlayer, MediaProvider, type MediaPlayerInstance } from "@vidstack/react"
 import { PlayerControls } from "./player-controls"
 import { usePseudoFullscreen } from "@/hooks/use-fullscreen"
-import { pseudoFullscreenStyle, needsCssRotation } from "@/lib/fullscreen"
+import { pseudoBackdropStyle, pseudoFullscreenStyle } from "@/lib/fullscreen"
 import { buildQualityOptions } from "@/lib/quality"
 import type { Episode } from "@/api/types"
 
@@ -40,7 +40,7 @@ export function VideoPlayer({
   const [source, setSource] = useState(src)
   const [activeQuality, setActiveQuality] = useState("original")
   const [menuOpen, setMenuOpen] = useState(false)
-  const { isFullscreen, toggle, usesRealFullscreen } = usePseudoFullscreen(episode.id)
+  const { isFullscreen, viewport, toggle, usesRealFullscreen } = usePseudoFullscreen(episode.id)
 
   const qualities = buildQualityOptions(episode)
 
@@ -81,6 +81,14 @@ export function VideoPlayer({
     [activeQuality, resolveVariantUrl],
   )
 
+  const toggleFullscreen = useCallback(() => {
+    const player = playerRef.current
+    if (player && !usesRealFullscreen && player.currentTime > 0) {
+      pendingSeekRef.current = player.currentTime
+    }
+    toggle()
+  }, [toggle, usesRealFullscreen])
+
   const controls = (
     <PlayerControls
       onClose={onClose}
@@ -90,11 +98,13 @@ export function VideoPlayer({
       activeQuality={activeQuality}
       onSelectQuality={selectQuality}
       isFullscreen={isFullscreen}
-      onToggleFullscreen={toggle}
+      onToggleFullscreen={toggleFullscreen}
       menuOpen={menuOpen}
       onMenuOpenChange={setMenuOpen}
     />
   )
+
+  const pseudoActive = isFullscreen && !usesRealFullscreen
 
   const player = (
     <MediaPlayer
@@ -102,23 +112,25 @@ export function VideoPlayer({
       key={episode.id}
       src={{ src: source, type: "video/mp4" }}
       title={title}
-      aspectRatio="16/9"
+      aspectRatio={pseudoActive ? undefined : "16/9"}
       playsInline
       autoPlay={autoPlay}
       fullscreenOrientation="landscape"
       onTimeUpdate={handleTimeUpdate}
       onCanPlay={handleCanPlay}
       onPause={onPause}
-      className="h-full w-full"
+      className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
     >
-      <MediaProvider />
+      <MediaProvider className="h-full w-full" />
       {controls}
     </MediaPlayer>
   )
 
-  if (isFullscreen && !usesRealFullscreen) {
+  if (pseudoActive && viewport) {
     return createPortal(
-      <div style={pseudoFullscreenStyle(needsCssRotation())}>{player}</div>,
+      <div style={pseudoBackdropStyle()}>
+        <div style={pseudoFullscreenStyle(viewport)}>{player}</div>
+      </div>,
       document.body,
     )
   }

@@ -1,22 +1,33 @@
 import type { CSSProperties } from "react"
 
+export interface Viewport {
+  width: number
+  height: number
+}
+
 export function canUseRealFullscreen(): boolean {
   if (typeof document === "undefined") return false
   return document.fullscreenEnabled === true
 }
 
-export function needsCssRotation(): boolean {
-  if (typeof window === "undefined" || typeof window.matchMedia !== "function") return false
-  return window.matchMedia("(orientation: portrait)").matches
+export function measureViewport(): Viewport {
+  const visual = window.visualViewport
+  if (visual) return { width: Math.round(visual.width), height: Math.round(visual.height) }
+  return { width: window.innerWidth, height: window.innerHeight }
 }
 
-export function pseudoFullscreenStyle(rotate: boolean): CSSProperties {
-  if (!rotate) {
+export function pseudoBackdropStyle(): CSSProperties {
+  return { position: "fixed", inset: 0, zIndex: 9998, background: "#000" }
+}
+
+export function pseudoFullscreenStyle(viewport: Viewport): CSSProperties {
+  if (viewport.width >= viewport.height) {
     return {
       position: "fixed",
-      inset: 0,
-      width: "100dvw",
-      height: "100dvh",
+      top: 0,
+      left: 0,
+      width: viewport.width,
+      height: viewport.height,
       zIndex: 9999,
       background: "#000",
     }
@@ -25,9 +36,9 @@ export function pseudoFullscreenStyle(rotate: boolean): CSSProperties {
     position: "fixed",
     top: 0,
     left: 0,
-    width: "100dvh",
-    height: "100dvw",
-    transform: "translate(100dvw, 0) rotate(90deg)",
+    width: viewport.height,
+    height: viewport.width,
+    transform: `translate(${viewport.width}px, 0px) rotate(90deg)`,
     transformOrigin: "top left",
     zIndex: 9999,
     background: "#000",

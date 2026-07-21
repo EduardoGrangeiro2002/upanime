@@ -1,11 +1,16 @@
 import { useEffect, useRef, useCallback, useState } from "react"
 import { createPortal } from "react-dom"
-import { MediaPlayer, MediaProvider, type MediaPlayerInstance } from "@vidstack/react"
+import { MediaPlayer, MediaProvider, useMediaState, type MediaPlayerInstance } from "@vidstack/react"
 import { PlayerControls } from "./player-controls"
 import { usePseudoFullscreen } from "@/hooks/use-fullscreen"
 import { pseudoBackdropStyle, pseudoFullscreenStyle } from "@/lib/fullscreen"
 import { buildQualityOptions } from "@/lib/quality"
 import type { Episode } from "@/api/types"
+
+export function requestRealFullscreen(player: MediaPlayerInstance, active: boolean) {
+  const request = active ? player.exitFullscreen() : player.enterFullscreen()
+  request.catch(() => {})
+}
 
 interface VideoPlayerProps {
   src: string
@@ -40,7 +45,8 @@ export function VideoPlayer({
   const [source, setSource] = useState(src)
   const [activeQuality, setActiveQuality] = useState("original")
   const [menuOpen, setMenuOpen] = useState(false)
-  const { isFullscreen, viewport, toggle, usesRealFullscreen } = usePseudoFullscreen(episode.id)
+  const { isFullscreen, viewport, toggle, exit, usesRealFullscreen } = usePseudoFullscreen(episode.id)
+  const mediaFullscreen = useMediaState("fullscreen", playerRef)
 
   const qualities = buildQualityOptions(episode)
 
@@ -83,11 +89,13 @@ export function VideoPlayer({
 
   const toggleFullscreen = useCallback(() => {
     const player = playerRef.current
-    if (player && !usesRealFullscreen && player.currentTime > 0) {
-      pendingSeekRef.current = player.currentTime
+    if (!player) return
+    if (usesRealFullscreen) {
+      requestRealFullscreen(player, mediaFullscreen)
+      return
     }
     toggle()
-  }, [toggle, usesRealFullscreen])
+  }, [toggle, usesRealFullscreen, mediaFullscreen])
 
   const controls = (
     <PlayerControls
@@ -97,7 +105,7 @@ export function VideoPlayer({
       qualities={qualities}
       activeQuality={activeQuality}
       onSelectQuality={selectQuality}
-      isFullscreen={isFullscreen}
+      isFullscreen={usesRealFullscreen ? mediaFullscreen : isFullscreen}
       onToggleFullscreen={toggleFullscreen}
       menuOpen={menuOpen}
       onMenuOpenChange={setMenuOpen}
@@ -106,34 +114,80 @@ export function VideoPlayer({
 
   const pseudoActive = isFullscreen && !usesRealFullscreen
 
-  const player = (
-    <MediaPlayer
-      ref={playerRef}
-      key={episode.id}
-      src={{ src: source, type: "video/mp4" }}
-      title={title}
-      aspectRatio={pseudoActive ? undefined : "16/9"}
-      playsInline
-      autoPlay={autoPlay}
-      fullscreenOrientation="landscape"
-      onTimeUpdate={handleTimeUpdate}
-      onCanPlay={handleCanPlay}
-      onPause={onPause}
-      className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
-    >
-      <MediaProvider className="h-full w-full" />
-      {controls}
-    </MediaPlayer>
+  const slotRef = useRef<HTMLDivElement>(null)
+  const slotRect = useSlotRect(slotRef, !pseudoActive)
+
+  useEffect(() => {
+    if (!pseudoActive) return
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key !== "Escape" || menuOpen) return
+      exit()
+    }
+    document.addEventListener("keydown", onKey)
+    return () => document.removeEventListener("keydown", onKey)
+  }, [pseudoActive, menuOpen, exit])
+
+  const playerStyle: React.CSSProperties =
+    pseudoActive && viewport
+      ? pseudoFullscreenStyle(viewport)
+      : slotRect
+        ? { position: "fixed", top: slotRect.top, left: slotRect.left, width: slotRect.width, height: slotRect.height, zIndex: 55 }
+        : { position: "fixed", opacity: 0, pointerEvents: "none" }
+
+  const playerLayer = (
+    <div style={pseudoActive ? pseudoBackdropStyle() : undefined}>
+      <div style={playerStyle} className="overflow-hidden rounded-lg bg-black">
+        <MediaPlayer
+          ref={playerRef}
+          key={episode.id}
+          src={{ src: source, type: "video/mp4" }}
+          title={title}
+          aspectRatio={pseudoActive ? undefined : "16/9"}
+          playsInline
+          autoPlay={autoPlay}
+          fullscreenOrientation="landscape"
+          onTimeUpdate={handleTimeUpdate}
+          onCanPlay={handleCanPlay}
+          onPause={onPause}
+          className="h-full w-full [&_video]:h-full [&_video]:w-full [&_video]:object-contain"
+        >
+          <MediaProvider className="h-full w-full" />
+          {controls}
+        </MediaPlayer>
+      </div>
+    </div>
   )
 
-  if (pseudoActive && viewport) {
-    return createPortal(
-      <div style={pseudoBackdropStyle()}>
-        <div style={pseudoFullscreenStyle(viewport)}>{player}</div>
-      </div>,
-      document.body,
-    )
-  }
+  return (
+    <>
+      <div ref={slotRef} className="pointer-events-none mb-4 aspect-video w-full rounded-lg bg-black" />
+      {createPortal(playerLayer, document.body)}
+    </>
+  )
+}
 
-  return <div className="relative overflow-hidden rounded-lg bg-black mb-4">{player}</div>
+function useSlotRect(ref: React.RefObject<HTMLElement | null>, active: boolean) {
+  const [rect, setRect] = useState<{ top: number; left: number; width: number; height: number } | null>(null)
+
+  useEffect(() => {
+    if (!active) return
+    const el = ref.current
+    if (!el) return
+    const measure = () => {
+      const r = el.getBoundingClientRect()
+      setRect({ top: r.top, left: r.left, width: r.width, height: r.height })
+    }
+    measure()
+    const observer = new ResizeObserver(measure)
+    observer.observe(el)
+    window.addEventListener("scroll", measure, true)
+    window.addEventListener("resize", measure)
+    return () => {
+      observer.disconnect()
+      window.removeEventListener("scroll", measure, true)
+      window.removeEventListener("resize", measure)
+    }
+  }, [ref, active])
+
+  return rect
 }

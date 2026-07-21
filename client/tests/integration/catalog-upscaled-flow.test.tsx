@@ -19,11 +19,10 @@ describe("Catalog Upscaled Flow", () => {
     await user.click(screen.getAllByRole("button", { name: /Abrir Shingeki no Kyojin/i })[0])
     await user.click(screen.getByRole("button", { name: /Assistir Episódio 01/i }))
 
-    const dialog = screen.getByRole("dialog")
-    const gear = await within(dialog).findByRole("button", { name: "Qualidade" })
+    const gear = await screen.findByRole("button", { name: "Qualidade" })
     await user.click(gear)
 
-    const menu = within(dialog).getByRole("menu")
+    const menu = screen.getByRole("menu")
     expect(within(menu).getByRole("menuitemradio", { name: /Original/ })).toBeInTheDocument()
     expect(within(menu).getByRole("menuitemradio", { name: /4K/ })).toBeInTheDocument()
     expect(within(menu).getByRole("menuitemradio", { name: /1080p/ })).toBeInTheDocument()
@@ -55,8 +54,7 @@ describe("Catalog Upscaled Flow", () => {
     })
     await user.click(screen.getByRole("button", { name: /Assistir Episódio 01/i }))
 
-    const dialog = screen.getByRole("dialog")
-    await within(dialog).findByRole("button", { name: /Fechar player/i })
-    expect(within(dialog).queryByRole("button", { name: "Qualidade" })).not.toBeInTheDocument()
+    await screen.findByRole("button", { name: /Fechar player/i })
+    expect(screen.queryByRole("button", { name: "Qualidade" })).not.toBeInTheDocument()
   })
 })

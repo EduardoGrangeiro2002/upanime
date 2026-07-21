@@ -1,4 +1,6 @@
 import { http, HttpResponse, delay } from "msw"
+
+const MOCK_VIDEO_URL = "https://files.vidstack.io/sprite-fight/720p.mp4"
 import { createCatalogAnimes, findAnimeByUrl, mockAnimes } from "./data/animes"
 import { createDownload } from "./data/downloads"
 import type { DownloadRequest, TargetHeight, UpscaleJob } from "@/api/types"
@@ -260,20 +262,16 @@ export const handlers = [
     return new HttpResponse(null, { status: 204 })
   }),
 
-  http.get("/api/catalog/episode/:id/stream", async ({ params, request }) => {
-    await delay(50)
+  http.get("/api/catalog/episode/:id/stream/file", ({ params, request }) => {
     const found = findCatalogEpisode(String(params.id))
     if (!found) {
-      return HttpResponse.json({ error: "Episode not found" }, { status: 404 })
+      return new HttpResponse(null, { status: 404 })
     }
-
     const variant = new URL(request.url).searchParams.get("variant") ?? "original"
-    const storageKey = resolveVariantKey(found.episode, variant)
-    if (!storageKey) {
-      return HttpResponse.json({ error: "Stream not available" }, { status: 404 })
+    if (!resolveVariantKey(found.episode, variant)) {
+      return new HttpResponse(null, { status: 404 })
     }
-
-    return HttpResponse.json({ url: `https://cdn.example.com/${storageKey}` })
+    return HttpResponse.redirect(MOCK_VIDEO_URL, 307)
   }),
 
   http.post("/api/catalog/anime/:id/organize", async ({ params }) => {

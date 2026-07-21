@@ -52,7 +52,7 @@ export function VideoPlayer({
 
   return (
     <div className="relative rounded-lg overflow-hidden bg-black mb-4">
-      <div className="absolute top-2 right-2 z-50 flex items-center gap-1">
+      <div className="absolute top-2 left-2 z-50 flex items-center gap-1">
         {onPrevious && (
           <Button
             variant="ghost"
@@ -84,7 +84,6 @@ export function VideoPlayer({
           onClick={onClose}
           aria-label="Fechar player"
           data-tooltip="Fechar player"
-          data-tooltip-pos="left"
         >
           <X className="h-4 w-4" aria-hidden="true" />
         </Button>

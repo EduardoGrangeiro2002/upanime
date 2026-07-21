@@ -25,7 +25,7 @@ export function Navbar({ currentPage, onNavigate }: NavbarProps) {
 
   return (
     <>
-      <header className="fixed top-0 left-0 right-0 z-40 h-[calc(4rem+env(safe-area-inset-top))] pt-[env(safe-area-inset-top)] glass border-b border-white/[0.06]">
+      <header className="fixed top-0 left-0 right-0 z-40 h-16 glass border-b border-white/[0.06]">
         <div className="flex h-full items-center justify-between px-4 md:px-8">
           <button
             onClick={() => onNavigate("downloads")}

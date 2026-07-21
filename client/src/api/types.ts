@@ -34,11 +34,6 @@ export interface Season {
   episodes: Episode[]
 }
 
-export interface EpisodeVariant {
-  height: number
-  storageKey: string
-}
-
 export interface Episode {
   id: string
   title: string
@@ -48,7 +43,6 @@ export interface Episode {
   url: string
   storageKey?: string
   upscaledStorageKey?: string
-  upscaledVariants?: EpisodeVariant[]
 }
 
 export interface EpisodeProgress {

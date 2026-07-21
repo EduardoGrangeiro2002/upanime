@@ -40,7 +40,7 @@ SHARPEN_GPU_SIGMA = 1.0
 SATURATION = 1.20
 CONTRAST = 1.05
 BRIGHTNESS = 0.0
-PREPROCESS_VF = "yadif,hqdn3d=4:3:6:4"
+PREPROCESS_VF = "yadif=deint=interlaced,hqdn3d=4:3:6:4"
 DECODE_QUEUE_SIZE = 24
 ENCODE_QUEUE_SIZE = 24
 
@@ -1020,9 +1020,16 @@ class QualityUpscalePipeline:
         encode_params: EncodeParams | None = None,
         fps_override: float | None = None,
     ) -> list[str]:
-        params = encode_params or EncodeParams(saturation=SATURATION, contrast=CONTRAST)
+        params = encode_params or EncodeParams(
+            sharpen=SHARPEN_GPU_AMOUNT, saturation=SATURATION, contrast=CONTRAST
+        )
+        vibrance = max(-2.0, min(2.0, (params.saturation - 1.0) * 1.5))
         encode_vf = (
-            f"eq=saturation={params.saturation}:contrast={params.contrast}:brightness={BRIGHTNESS}"
+            f"vibrance=intensity={vibrance:.3f},"
+            "scale=out_color_matrix=bt709,format=yuv420p,"
+            f"eq=contrast={params.contrast}:brightness={BRIGHTNESS},"
+            "deband,"
+            "setparams=color_primaries=bt709:color_trc=bt709:colorspace=bt709"
         )
         return [
             "ffmpeg",

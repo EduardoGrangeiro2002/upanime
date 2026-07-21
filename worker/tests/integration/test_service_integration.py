@@ -282,6 +282,7 @@ def test_handler_end_to_end(tmp_path, monkeypatch):
         assert result == {
             "status": "completed",
             "resultStorageKey": "animes/test/source_upscaled.mp4",
+            "variantHeights": "",
         }
         assert storage.exists("animes/test/source_upscaled.mp4")
         assert pipeline.heights == [2160]

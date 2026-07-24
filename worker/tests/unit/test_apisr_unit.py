@@ -98,6 +98,18 @@ def test_apisr_infer_splits_batch_on_oom():
     assert torch.equal(result, expected)
 
 
+def test_apisr_infer_output_supports_downstream_pipeline_ops():
+    pipeline = make_pipeline()
+    runtime = SimpleNamespace(torch=torch)
+    out = pipeline._apisr_infer(OomAboveBatchOne(), torch.rand(1, 3, 80, 80), runtime)
+
+    out = out.half().float()
+    frame = out[0:1, :, :64, :64]
+    sharpened = (frame + 0.5 * (frame - frame)).clamp_(0, 1)
+    final = sharpened.clone().mul_(255.0).clamp_(0, 255)
+    assert final.shape == (1, 3, 64, 64)
+
+
 def test_timed_accumulates_stage_seconds():
     pipeline = make_pipeline()
     with pipeline._timed("model"):

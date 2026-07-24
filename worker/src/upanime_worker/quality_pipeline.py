@@ -603,7 +603,7 @@ class QualityUpscalePipeline:
             with runtime.torch.inference_mode(), runtime.torch.autocast(
                 device_type=tensor.device.type, dtype=runtime.torch.bfloat16
             ):
-                return model(tensor).float()
+                return model(tensor).float().clamp(0, 1)
         except runtime.torch.cuda.OutOfMemoryError:
             if batch == 1 and height * width <= APISR_MIN_TILE_PIXELS:
                 raise
@@ -649,7 +649,7 @@ class QualityUpscalePipeline:
                 for image in images
             ]).to(runtime.device)
         with self._timed("model", runtime):
-            output = self._apisr_infer(model, batch, runtime).clamp_(0, 1)
+            output = self._apisr_infer(model, batch, runtime)
             if runtime.use_half:
                 output = output.half()
         sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
@@ -1052,7 +1052,7 @@ class QualityUpscalePipeline:
                 )
             tensors.append(tensor)
 
-        return runtime.torch.stack(tensors).pin_memory(), sizes
+        return runtime.torch.stack(tensors), sizes
 
     def _gpu_unsharp_mask(
         self, frames: object, runtime: PipelineRuntime, amount: float,

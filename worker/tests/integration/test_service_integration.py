@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import json
 import threading
+
+import pytest
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -208,7 +210,8 @@ def test_upscale_job_runner_failure(tmp_path):
             callbackUrl=f"{base_url}/callback",
         )
 
-        runner.run(job)
+        with pytest.raises(RuntimeError, match="pipeline failed"):
+            runner.run(job)
 
         assert not storage.exists("animes/test/source_upscaled.mp4")
         assert CallbackServerHandler.callbacks == [{
@@ -243,7 +246,8 @@ def test_upscale_job_runner_swallows_failure_callback_errors(tmp_path):
             callbackUrl=f"{base_url}/callback",
         )
 
-        runner.run(job)
+        with pytest.raises(RuntimeError, match="pipeline failed"):
+            runner.run(job)
 
         assert not storage.exists("animes/test/source_upscaled.mp4")
     finally:

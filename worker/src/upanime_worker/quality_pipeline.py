@@ -571,17 +571,16 @@ class QualityUpscalePipeline:
             )
             if descriptor.scale != MODEL_SCALE:
                 raise RuntimeError(f"APISR model scale {descriptor.scale} != {MODEL_SCALE}")
-            model = descriptor.model.eval()
-            if runtime.use_half:
-                model = model.half()
-            self._apisr_model = model
-            return model
+            self._apisr_model = descriptor.model.eval()
+            return self._apisr_model
 
     def _apisr_infer(self, model: object, tensor: object, runtime: PipelineRuntime) -> object:
         _, _, height, width = tensor.shape
         try:
-            with runtime.torch.inference_mode():
-                return model(tensor)
+            with runtime.torch.inference_mode(), runtime.torch.autocast(
+                device_type=tensor.device.type, dtype=runtime.torch.bfloat16
+            ):
+                return model(tensor).float()
         except runtime.torch.cuda.OutOfMemoryError:
             if height * width <= APISR_MIN_TILE_PIXELS:
                 raise
@@ -622,10 +621,10 @@ class QualityUpscalePipeline:
                 .unsqueeze(0)
                 .to(runtime.device)
             )
-            if runtime.use_half:
-                tensor = tensor.half()
             outputs.append(self._apisr_infer(model, tensor, runtime))
         output = runtime.torch.cat(outputs, dim=0).clamp_(0, 1)
+        if runtime.use_half:
+            output = output.half()
         sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
         return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
 

@@ -89,7 +89,7 @@ class UpscaleJobRunner:
         except Exception as exc:
             logging.exception("worker job %s failed", job.job_id)
             self._notify_failure(job, str(exc))
-            return []
+            raise
         finally:
             self._cleanup(work_dir)
 

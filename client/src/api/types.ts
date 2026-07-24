@@ -189,4 +189,5 @@ export interface UpscaleRequest {
   effectsStrength?: number
   effectsSensitivity?: number
   skipUpscale?: boolean
+  upscaler?: "compact" | "apisr"
 }

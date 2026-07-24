@@ -46,6 +46,7 @@ type UpscaleJob struct {
 	EffectsStrength  *float64 `json:"effectsStrength,omitempty"`
 	EffectsSens      *float64 `json:"effectsSensitivity,omitempty"`
 	SkipUpscale      bool     `json:"skipUpscale,omitempty"`
+	Upscaler         string   `json:"upscaler,omitempty"`
 	RunPodJobID      string   `json:"-"`
 	SourceStorageKey string   `json:"-"`
 	ResultStorageKey string   `json:"resultStorageKey,omitempty"`
@@ -74,4 +75,5 @@ type CreateUpscaleRequest struct {
 	EffectsStrength *float64   `json:"effectsStrength,omitempty"`
 	EffectsSens     *float64   `json:"effectsSensitivity,omitempty"`
 	SkipUpscale     bool       `json:"skipUpscale,omitempty"`
+	Upscaler        string     `json:"upscaler,omitempty"`
 }

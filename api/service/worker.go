@@ -26,6 +26,7 @@ type UpscaleWorkerJob struct {
 	EffectsStrength  *float64        `json:"effectsStrength,omitempty"`
 	EffectsSens      *float64        `json:"effectsSensitivity,omitempty"`
 	SkipUpscale      bool            `json:"skipUpscale,omitempty"`
+	Upscaler         string          `json:"upscaler,omitempty"`
 	CallbackURL      string          `json:"callbackUrl,omitempty"`
 }
 

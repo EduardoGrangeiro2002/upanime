@@ -63,6 +63,7 @@ func TestBuildWorkerJobLeavesSourceURLEmpty(t *testing.T) {
 		TargetHeight:     1440,
 		Sharpen:          &sharpen,
 		Interpolate:      true,
+		Upscaler:         "apisr",
 		SourceStorageKey: "animes/naruto/ep_1.mp4",
 		ResultStorageKey: "animes/naruto/ep_1_upscaled.mp4",
 	}
@@ -80,6 +81,9 @@ func TestBuildWorkerJobLeavesSourceURLEmpty(t *testing.T) {
 	}
 	if wj.Sharpen == nil || *wj.Sharpen != 0.5 || !wj.Interpolate {
 		t.Fatal("expected effect params carried to worker job")
+	}
+	if wj.Upscaler != "apisr" {
+		t.Fatalf("expected upscaler carried to worker job, got %q", wj.Upscaler)
 	}
 	if len(wj.Variants) != 1 || wj.Variants[0].Height != 1080 {
 		t.Fatalf("expected 1080 variant, got %+v", wj.Variants)

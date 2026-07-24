@@ -21,6 +21,7 @@ export function EditionPage() {
   const [effects, setEffects] = useState(false)
   const [effectsParams, setEffectsParams] = useState({ strength: 1.0, sensitivity: 1.0 })
   const [skipUpscale, setSkipUpscale] = useState(false)
+  const [upscaler, setUpscaler] = useState<"compact" | "apisr">("compact")
   const [encodeParams, setEncodeParams] = useState<EncodeParams>({ batchSize: 2, sharpen: 0.5, saturation: 1.20, contrast: 1.05 })
   const startUpscale = useStartUpscale()
 
@@ -49,6 +50,7 @@ export function EditionPage() {
         ...(interpolate ? { panRatio } : {}),
         effects,
         ...(effects ? { effectsStrength: effectsParams.strength, effectsSensitivity: effectsParams.sensitivity, skipUpscale } : {}),
+        ...(upscaler !== "compact" ? { upscaler } : {}),
       },
       {
         onSuccess: () => {
@@ -98,6 +100,8 @@ export function EditionPage() {
         onEffectsParamsChange={setEffectsParams}
         skipUpscale={skipUpscale}
         onSkipUpscaleChange={setSkipUpscale}
+        upscaler={upscaler}
+        onUpscalerChange={setUpscaler}
         encodeParams={encodeParams}
         onEncodeParamsChange={setEncodeParams}
       />
@@ -107,7 +111,7 @@ export function EditionPage() {
       {selectedEpisodeIds.size > 0 && (
         <div className="fixed bottom-24 md:bottom-4 left-1/2 -translate-x-1/2 z-30 flex max-w-[calc(100vw-2rem)] items-center gap-3 rounded-2xl glass border border-white/[0.08] px-4 py-3 shadow-2xl animate-in fade-in slide-in-from-bottom-2 duration-200">
           <span className="text-sm text-muted-foreground whitespace-nowrap">
-            {selectedEpisodeIds.size} episódio{selectedEpisodeIds.size !== 1 ? "s" : ""} · {targetHeight}p{interpolate ? " · 60fps" : ""}
+            {selectedEpisodeIds.size} episódio{selectedEpisodeIds.size !== 1 ? "s" : ""} · {targetHeight}p{interpolate ? " · 60fps" : ""}{upscaler === "apisr" ? " · APISR" : ""}
           </span>
           <Button
             variant="gradient"
@@ -361,7 +365,7 @@ export function AggressiveUpscaleWarning({
   )
 }
 
-function ProcessingConfig({
+export function ProcessingConfig({
   targetHeight,
   onChange,
   interpolate,
@@ -374,6 +378,8 @@ function ProcessingConfig({
   onEffectsParamsChange,
   skipUpscale,
   onSkipUpscaleChange,
+  upscaler,
+  onUpscalerChange,
   encodeParams,
   onEncodeParamsChange,
 }: {
@@ -389,6 +395,8 @@ function ProcessingConfig({
   onEffectsParamsChange: (params: { strength: number; sensitivity: number }) => void
   skipUpscale: boolean
   onSkipUpscaleChange: (value: boolean) => void
+  upscaler: "compact" | "apisr"
+  onUpscalerChange: (value: "compact" | "apisr") => void
   encodeParams: EncodeParams
   onEncodeParamsChange: (params: EncodeParams) => void
 }) {
@@ -434,6 +442,26 @@ function ProcessingConfig({
               onClick={() => onChange(2160)}
             >
               4K
+            </Button>
+          </div>
+        </div>
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <span
+              className="text-sm font-medium underline decoration-dotted decoration-muted-foreground/40 underline-offset-4 cursor-help"
+              data-tooltip="APISR (transformer): linhas mais nítidas e limpeza de artefatos em fontes antigas de baixa resolução (360p/480p). ~5× mais lento que o padrão; em fontes 1080p pode estourar o tempo limite do job."
+              tabIndex={0}
+            >
+              Upscaler APISR (fontes antigas)
+            </span>
+            <Button
+              type="button"
+              size="sm"
+              variant={upscaler === "apisr" ? "default" : "outline"}
+              aria-pressed={upscaler === "apisr"}
+              onClick={() => onUpscalerChange(upscaler === "apisr" ? "compact" : "apisr")}
+            >
+              {upscaler === "apisr" ? "Ativado" : "Desativado"}
             </Button>
           </div>
         </div>

@@ -66,6 +66,11 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if req.Upscaler != "" && req.Upscaler != "compact" && req.Upscaler != "apisr" {
+		http.Error(w, `{"error":"upscaler must be compact or apisr"}`, http.StatusBadRequest)
+		return
+	}
+
 	anime, err := h.animes.GetByID(r.Context(), req.AnimeID.Int64())
 	if err != nil {
 		http.Error(w, `{"error":"anime not found"}`, http.StatusNotFound)
@@ -102,6 +107,7 @@ func (h *EditionHandler) Create(w http.ResponseWriter, r *http.Request) {
 			EffectsStrength:  req.EffectsStrength,
 			EffectsSens:      req.EffectsSens,
 			SkipUpscale:      req.SkipUpscale,
+			Upscaler:         req.Upscaler,
 			SourceStorageKey: episode.StorageKey,
 			ResultStorageKey: buildUpscaledKey(episode.StorageKey),
 			AnimeTitle:       anime.Title,
@@ -142,6 +148,7 @@ func buildWorkerJob(job model.UpscaleJob) service.UpscaleWorkerJob {
 		EffectsStrength:  job.EffectsStrength,
 		EffectsSens:      job.EffectsSens,
 		SkipUpscale:      job.SkipUpscale,
+		Upscaler:         job.Upscaler,
 	}
 }
 

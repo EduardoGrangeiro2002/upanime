@@ -29,6 +29,9 @@ from .tagger import EffectTagger
 
 MODEL_URL = "https://github.com/xinntao/Real-ESRGAN/releases/download/v0.2.5.0/realesr-animevideov3.pth"
 HURRDEBLUR_URL = "https://objectstorage.us-phoenix-1.oraclecloud.com/n/ax6ygfvpvzka/b/open-modeldb-files/o/1x-HurrDeblur-SuperUltraCompact.pth"
+APISR_URL = "https://github.com/Kiteretsu77/APISR/releases/download/v0.1.0/4x_APISR_GRL_GAN_generator.pth"
+APISR_MIN_TILE_PIXELS = 65536
+APISR_TILE_OVERLAP = 32
 MODEL_SCALE = 4
 BATCH_SIZE = 2
 TARGET_FPS = 60.0
@@ -86,9 +89,11 @@ class QualityUpscalePipeline:
         enable_torch_compile: bool,
         rife_dir: Path | None = None,
         tagger: EffectTagger | None = None,
+        apisr_model_path: Path | None = None,
     ) -> None:
         self._model_path = model_path
         self._hurrdeblur_model_path = hurrdeblur_model_path
+        self._apisr_model_path = apisr_model_path
         self._target_height = target_height
         self._encode_preset = encode_preset
         self._enable_torch_compile = enable_torch_compile
@@ -98,6 +103,9 @@ class QualityUpscalePipeline:
         self._runtime_lock = threading.Lock()
         self._rife_model: object | None = None
         self._rife_lock = threading.Lock()
+        self._apisr_model: object | None = None
+        self._apisr_lock = threading.Lock()
+        self._upscaler = "compact"
 
     def process(
         self,
@@ -114,8 +122,10 @@ class QualityUpscalePipeline:
         effects_strength: float | None = None,
         effects_sensitivity: float | None = None,
         skip_upscale: bool = False,
+        upscaler: str | None = None,
         dataset_dir: Path | None = None,
     ) -> None:
+        self._upscaler = upscaler or "compact"
         encode_params = EncodeParams(
             sharpen=max(0.0, min(2.0, sharpen)) if sharpen is not None else SHARPEN_GPU_AMOUNT,
             saturation=saturation if saturation is not None else SATURATION,
@@ -125,8 +135,8 @@ class QualityUpscalePipeline:
         effective_batch = max(1, min(16, batch_size)) if batch_size is not None else BATCH_SIZE
         effective_pan_ratio = pan_residual_ratio if pan_residual_ratio is not None else PAN_RESIDUAL_RATIO
         logging.info(
-            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f interpolate=%s pan_ratio=%.2f effects=%s skip_upscale=%s",
-            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast, interpolate, effective_pan_ratio, effects, skip_upscale,
+            "gpu_optimized pipeline: target=%dp batch=%d sharpen=%.2f saturation=%.2f contrast=%.2f interpolate=%s pan_ratio=%.2f effects=%s skip_upscale=%s upscaler=%s",
+            effective_height, effective_batch, encode_params.sharpen, encode_params.saturation, encode_params.contrast, interpolate, effective_pan_ratio, effects, skip_upscale, self._upscaler,
         )
         metadata = self._probe_video(input_path, effective_height)
         if skip_upscale:
@@ -162,16 +172,19 @@ class QualityUpscalePipeline:
             (self._model_path, MODEL_URL),
             (self._hurrdeblur_model_path, HURRDEBLUR_URL),
         ]:
-            if path.exists():
-                continue
-            path.parent.mkdir(parents=True, exist_ok=True)
-            response = requests.get(url, stream=True, timeout=300)
-            response.raise_for_status()
-            with path.open("wb") as destination:
-                for chunk in response.iter_content(chunk_size=1024 * 1024):
-                    if not chunk:
-                        continue
-                    destination.write(chunk)
+            self._download_file(path, url)
+
+    def _download_file(self, path: Path, url: str) -> None:
+        if path.exists():
+            return
+        path.parent.mkdir(parents=True, exist_ok=True)
+        response = requests.get(url, stream=True, timeout=300)
+        response.raise_for_status()
+        with path.open("wb") as destination:
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                if not chunk:
+                    continue
+                destination.write(chunk)
 
     def _build_runtime(self) -> PipelineRuntime:
         import cv2
@@ -542,6 +555,80 @@ class QualityUpscalePipeline:
         for frame in frames:
             encode_queue.put(frame)
 
+    def _load_apisr(self, runtime: PipelineRuntime) -> object:
+        with self._apisr_lock:
+            if self._apisr_model is not None:
+                return self._apisr_model
+
+            if self._apisr_model_path is None:
+                raise RuntimeError("upscaler=apisr requested but WORKER_APISR_MODEL_PATH is not configured")
+
+            self._download_file(self._apisr_model_path, APISR_URL)
+
+            import spandrel
+            descriptor = spandrel.ModelLoader(device=runtime.device).load_from_file(
+                str(self._apisr_model_path)
+            )
+            if descriptor.scale != MODEL_SCALE:
+                raise RuntimeError(f"APISR model scale {descriptor.scale} != {MODEL_SCALE}")
+            model = descriptor.model.eval()
+            if runtime.use_half:
+                model = model.half()
+            self._apisr_model = model
+            return model
+
+    def _apisr_infer(self, model: object, tensor: object, runtime: PipelineRuntime) -> object:
+        _, _, height, width = tensor.shape
+        try:
+            with runtime.torch.inference_mode():
+                return model(tensor)
+        except runtime.torch.cuda.OutOfMemoryError:
+            if height * width <= APISR_MIN_TILE_PIXELS:
+                raise
+            runtime.torch.cuda.empty_cache()
+
+        overlap = APISR_TILE_OVERLAP
+        if height >= width:
+            mid = height // 2
+            top = self._apisr_infer(model, tensor[:, :, : mid + overlap, :], runtime)
+            bottom = self._apisr_infer(model, tensor[:, :, mid - overlap :, :], runtime)
+            return runtime.torch.cat(
+                [top[:, :, : mid * MODEL_SCALE, :], bottom[:, :, overlap * MODEL_SCALE :, :]], dim=2
+            )
+        mid = width // 2
+        left = self._apisr_infer(model, tensor[:, :, :, : mid + overlap], runtime)
+        right = self._apisr_infer(model, tensor[:, :, :, mid - overlap :], runtime)
+        return runtime.torch.cat(
+            [left[:, :, :, : mid * MODEL_SCALE], right[:, :, :, overlap * MODEL_SCALE :]], dim=3
+        )
+
+    def _apisr_upscale_batch(
+        self,
+        images: list[object],
+        runtime: PipelineRuntime,
+        metadata: VideoMetadata,
+        encode_params: EncodeParams | None,
+        comp: EffectsComp | None,
+    ) -> list[object]:
+        model = self._load_apisr(runtime)
+        sizes = [(image.shape[0], image.shape[1]) for image in images]
+        outputs = []
+        for image in images:
+            tensor = (
+                runtime.torch.from_numpy(runtime.numpy.array(image, copy=True))
+                .permute(2, 0, 1)
+                .float()
+                .div(255.0)
+                .unsqueeze(0)
+                .to(runtime.device)
+            )
+            if runtime.use_half:
+                tensor = tensor.half()
+            outputs.append(self._apisr_infer(model, tensor, runtime))
+        output = runtime.torch.cat(outputs, dim=0).clamp_(0, 1)
+        sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
+        return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
+
     def _load_rife(self, runtime: PipelineRuntime) -> object:
         with self._rife_lock:
             if self._rife_model is not None:
@@ -862,6 +949,8 @@ class QualityUpscalePipeline:
     ) -> list[object]:
         if skip_upscale:
             return self._comp_only_batch(images, runtime, comp)
+        if self._upscaler == "apisr":
+            return self._apisr_upscale_batch(images, runtime, metadata, encode_params, comp)
         batch, sizes = self._prepare_batch(images, runtime)
 
         batch = batch.to(runtime.device, non_blocking=True)

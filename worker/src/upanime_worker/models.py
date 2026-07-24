@@ -30,6 +30,7 @@ class WorkerJobRequest(BaseModel):
     effects_strength: float | None = Field(default=None, alias="effectsStrength")
     effects_sensitivity: float | None = Field(default=None, alias="effectsSensitivity")
     skip_upscale: bool = Field(default=False, alias="skipUpscale")
+    upscaler: str | None = Field(default=None)
     variants: list[VariantSpec] = Field(default_factory=list)
     callback_url: HttpUrl | None = Field(default=None, alias="callbackUrl")
 
@@ -38,6 +39,13 @@ class WorkerJobRequest(BaseModel):
     def validate_target_height(cls, value: int) -> int:
         if value not in VALID_TARGET_HEIGHTS:
             raise ValueError(f"target_height must be one of {sorted(VALID_TARGET_HEIGHTS)}")
+        return value
+
+    @field_validator("upscaler")
+    @classmethod
+    def validate_upscaler(cls, value: str | None) -> str | None:
+        if value not in (None, "compact", "apisr"):
+            raise ValueError("upscaler must be one of: compact, apisr")
         return value
 
     @field_validator("pan_ratio")

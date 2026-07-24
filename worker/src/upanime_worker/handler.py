@@ -21,6 +21,7 @@ def _build_runner() -> UpscaleJobRunner:
     pipeline = QualityUpscalePipeline(
         model_path=settings.model_path,
         hurrdeblur_model_path=settings.hurrdeblur_model_path,
+        apisr_model_path=settings.apisr_model_path,
         target_height=settings.target_height,
         encode_preset=settings.encode_preset,
         enable_torch_compile=settings.enable_torch_compile,

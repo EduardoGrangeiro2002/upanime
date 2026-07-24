@@ -79,6 +79,7 @@ class UpscaleJobRunner:
                 effects_strength=job.effects_strength,
                 effects_sensitivity=job.effects_sensitivity,
                 skip_upscale=job.skip_upscale,
+                upscaler=job.upscaler,
                 dataset_dir=dataset_dir,
             )
             self._storage.upload_file(output_path, job.result_storage_key)

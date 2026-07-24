@@ -61,12 +61,17 @@ def _get_runner() -> UpscaleJobRunner:
 def handler(job: dict) -> dict:
     job_input = job["input"]
     request = WorkerJobRequest(**job_input)
-    uploaded_heights = _get_runner().run(request)
-    return {
+    runner = _get_runner()
+    uploaded_heights = runner.run(request)
+    result = {
         "status": "completed",
         "resultStorageKey": request.result_storage_key,
         "variantHeights": ",".join(str(h) for h in uploaded_heights),
     }
+    timings = getattr(runner, "last_stage_timings", lambda: None)()
+    if isinstance(timings, dict):
+        result["stageTimings"] = timings
+    return result
 
 
 if __name__ == "__main__":

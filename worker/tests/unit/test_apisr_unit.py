@@ -78,3 +78,31 @@ def test_apisr_infer_reraises_when_tile_already_small():
 
     with pytest.raises(torch.cuda.OutOfMemoryError):
         pipeline._apisr_infer(OomBelowThreshold(0), tensor, runtime)
+
+
+class OomAboveBatchOne:
+    def __call__(self, tensor: torch.Tensor) -> torch.Tensor:
+        if tensor.shape[0] > 1:
+            raise torch.cuda.OutOfMemoryError("fake batch oom")
+        return torch.nn.functional.interpolate(tensor, scale_factor=MODEL_SCALE, mode="nearest")
+
+
+def test_apisr_infer_splits_batch_on_oom():
+    pipeline = make_pipeline()
+    runtime = SimpleNamespace(torch=torch)
+    tensor = torch.rand(4, 3, 300, 300)
+    expected = torch.nn.functional.interpolate(tensor, scale_factor=MODEL_SCALE, mode="nearest")
+
+    result = pipeline._apisr_infer(OomAboveBatchOne(), tensor, runtime)
+
+    assert torch.equal(result, expected)
+
+
+def test_timed_accumulates_stage_seconds():
+    pipeline = make_pipeline()
+    with pipeline._timed("model"):
+        pass
+    with pipeline._timed("model"):
+        pass
+    assert pipeline._stage_seconds["model"] >= 0.0
+    assert len(pipeline._stage_seconds) == 1

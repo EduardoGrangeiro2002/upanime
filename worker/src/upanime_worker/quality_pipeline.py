@@ -10,6 +10,7 @@ import sys
 import threading
 import time
 import types
+from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
 
@@ -106,6 +107,18 @@ class QualityUpscalePipeline:
         self._apisr_model: object | None = None
         self._apisr_lock = threading.Lock()
         self._upscaler = "compact"
+        self._stage_seconds: dict[str, float] = {}
+        self.last_stage_timings: dict[str, float] | None = None
+
+    @contextmanager
+    def _timed(self, stage: str, runtime: PipelineRuntime | None = None):
+        start = time.monotonic()
+        try:
+            yield
+        finally:
+            if runtime is not None and runtime.torch.cuda.is_available():
+                runtime.torch.cuda.synchronize()
+            self._stage_seconds[stage] = self._stage_seconds.get(stage, 0.0) + time.monotonic() - start
 
     def process(
         self,
@@ -126,6 +139,9 @@ class QualityUpscalePipeline:
         dataset_dir: Path | None = None,
     ) -> None:
         self._upscaler = upscaler or "compact"
+        self._stage_seconds = {}
+        self.last_stage_timings = None
+        started = time.monotonic()
         encode_params = EncodeParams(
             sharpen=max(0.0, min(2.0, sharpen)) if sharpen is not None else SHARPEN_GPU_AMOUNT,
             saturation=saturation if saturation is not None else SATURATION,
@@ -156,6 +172,11 @@ class QualityUpscalePipeline:
         else:
             self._run_stream(input_path, output_path, metadata, runtime, encode_params, effective_batch, comp, dataset_dir, effects_log, skip_upscale)
         self._write_effects_log(dataset_dir, metadata.fps, "chain" if interpolate else "stream", effects_log)
+        self.last_stage_timings = {
+            **{stage: round(seconds, 2) for stage, seconds in self._stage_seconds.items()},
+            "total": round(time.monotonic() - started, 2),
+        }
+        logging.info("stage timings: %s", json.dumps(self.last_stage_timings))
 
     def _load_runtime(self) -> PipelineRuntime:
         with self._runtime_lock:
@@ -489,7 +510,8 @@ class QualityUpscalePipeline:
         encoder.start()
 
         while True:
-            item = decode_queue.get()
+            with self._timed("decode_wait"):
+                item = decode_queue.get()
             if item is sentinel:
                 break
 
@@ -552,8 +574,9 @@ class QualityUpscalePipeline:
         skip_upscale: bool = False,
     ) -> None:
         frames = self._upscale_batch(pending_images, runtime, metadata, encode_params, comp, skip_upscale)
-        for frame in frames:
-            encode_queue.put(frame)
+        with self._timed("encode_wait"):
+            for frame in frames:
+                encode_queue.put(frame)
 
     def _load_apisr(self, runtime: PipelineRuntime) -> object:
         with self._apisr_lock:
@@ -575,16 +598,22 @@ class QualityUpscalePipeline:
             return self._apisr_model
 
     def _apisr_infer(self, model: object, tensor: object, runtime: PipelineRuntime) -> object:
-        _, _, height, width = tensor.shape
+        batch, _, height, width = tensor.shape
         try:
             with runtime.torch.inference_mode(), runtime.torch.autocast(
                 device_type=tensor.device.type, dtype=runtime.torch.bfloat16
             ):
                 return model(tensor).float()
         except runtime.torch.cuda.OutOfMemoryError:
-            if height * width <= APISR_MIN_TILE_PIXELS:
+            if batch == 1 and height * width <= APISR_MIN_TILE_PIXELS:
                 raise
             runtime.torch.cuda.empty_cache()
+
+        if batch > 1:
+            mid = batch // 2
+            first = self._apisr_infer(model, tensor[:mid], runtime)
+            second = self._apisr_infer(model, tensor[mid:], runtime)
+            return runtime.torch.cat([first, second], dim=0)
 
         overlap = APISR_TILE_OVERLAP
         if height >= width:
@@ -611,22 +640,21 @@ class QualityUpscalePipeline:
     ) -> list[object]:
         model = self._load_apisr(runtime)
         sizes = [(image.shape[0], image.shape[1]) for image in images]
-        outputs = []
-        for image in images:
-            tensor = (
+        with self._timed("gpu_upload", runtime):
+            batch = runtime.torch.stack([
                 runtime.torch.from_numpy(runtime.numpy.array(image, copy=True))
                 .permute(2, 0, 1)
                 .float()
                 .div(255.0)
-                .unsqueeze(0)
-                .to(runtime.device)
-            )
-            outputs.append(self._apisr_infer(model, tensor, runtime))
-        output = runtime.torch.cat(outputs, dim=0).clamp_(0, 1)
-        if runtime.use_half:
-            output = output.half()
+                for image in images
+            ]).to(runtime.device)
+        with self._timed("model", runtime):
+            output = self._apisr_infer(model, batch, runtime).clamp_(0, 1)
+            if runtime.use_half:
+                output = output.half()
         sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
-        return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
+        with self._timed("post", runtime):
+            return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
 
     def _load_rife(self, runtime: PipelineRuntime) -> object:
         with self._rife_lock:
@@ -950,20 +978,20 @@ class QualityUpscalePipeline:
             return self._comp_only_batch(images, runtime, comp)
         if self._upscaler == "apisr":
             return self._apisr_upscale_batch(images, runtime, metadata, encode_params, comp)
-        batch, sizes = self._prepare_batch(images, runtime)
+        with self._timed("gpu_upload", runtime):
+            batch, sizes = self._prepare_batch(images, runtime)
+            batch = batch.to(runtime.device, non_blocking=True)
+            batch = batch.contiguous(memory_format=runtime.torch.channels_last)
+            if runtime.use_half:
+                batch = batch.half()
 
-        batch = batch.to(runtime.device, non_blocking=True)
-        batch = batch.contiguous(memory_format=runtime.torch.channels_last)
-        if runtime.use_half:
-            batch = batch.half()
-
-        runtime.torch.cuda.synchronize()
-        with runtime.torch.inference_mode():
-            output = runtime.raw_model(batch).clamp_(0, 1)
-        runtime.torch.cuda.synchronize()
+        with self._timed("model", runtime):
+            with runtime.torch.inference_mode():
+                output = runtime.raw_model(batch).clamp_(0, 1)
 
         sharpen_amount = encode_params.sharpen if encode_params else SHARPEN_GPU_AMOUNT
-        return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
+        with self._timed("post", runtime):
+            return self._decode_gpu_optimized_frames(output, sizes, runtime, metadata, sharpen_amount, comp)
 
     def _comp_only_batch(
         self,

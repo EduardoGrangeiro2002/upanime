@@ -56,6 +56,10 @@ class UpscaleJobRunner:
         self._force_interpolate = force_interpolate
         self._encode_preset = encode_preset
 
+    def last_stage_timings(self) -> dict | None:
+        value = getattr(self._pipeline, "last_stage_timings", None)
+        return value if isinstance(value, dict) else None
+
     def run(self, job: WorkerJobRequest) -> list[int]:
         work_dir = self._temp_root / str(job.job_id)
         input_path = work_dir / "input.mp4"

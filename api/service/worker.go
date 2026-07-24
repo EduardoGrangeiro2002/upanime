@@ -30,13 +30,19 @@ type UpscaleWorkerJob struct {
 	CallbackURL      string          `json:"callbackUrl,omitempty"`
 }
 
+type RunPodJobOutput struct {
+	Status           string `json:"status,omitempty"`
+	ResultStorageKey string `json:"resultStorageKey,omitempty"`
+	VariantHeights   string `json:"variantHeights,omitempty"`
+}
+
 type RunPodJobStatus struct {
-	ID            string            `json:"id"`
-	Status        string            `json:"status"`
-	Output        map[string]string `json:"output,omitempty"`
-	Error         string            `json:"error,omitempty"`
-	DelayTime     int               `json:"delayTime,omitempty"`
-	ExecutionTime int               `json:"executionTime,omitempty"`
+	ID            string          `json:"id"`
+	Status        string          `json:"status"`
+	Output        RunPodJobOutput `json:"output,omitempty"`
+	Error         string          `json:"error,omitempty"`
+	DelayTime     int             `json:"delayTime,omitempty"`
+	ExecutionTime int             `json:"executionTime,omitempty"`
 }
 
 type UpscaleWorkerClient interface {

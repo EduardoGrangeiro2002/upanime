@@ -93,11 +93,11 @@ func (p *RunPodPoller) checkJob(ctx context.Context, job model.UpscaleJob) {
 }
 
 func (p *RunPodPoller) handleCompleted(ctx context.Context, job model.UpscaleJob, status *RunPodJobStatus) {
-	resultKey := status.Output["resultStorageKey"]
+	resultKey := status.Output.ResultStorageKey
 	if resultKey != "" {
 		_ = p.jobs.UpdateResult(ctx, job.ID.Int64(), resultKey)
 		_ = p.episodes.UpdateUpscaledStorageKey(ctx, job.EpisodeID.Int64(), resultKey)
-		p.saveVariants(ctx, job, resultKey, status.Output["variantHeights"])
+		p.saveVariants(ctx, job, resultKey, status.Output.VariantHeights)
 	}
 
 	_ = p.jobs.UpdateStatus(ctx, job.ID.Int64(), "completed", "")

@@ -99,7 +99,7 @@ func TestRunPodClient_Status_Completed(t *testing.T) {
 			t.Errorf("expected auth header")
 		}
 		w.WriteHeader(http.StatusOK)
-		w.Write([]byte(`{"id":"job-123","status":"COMPLETED","output":{"resultStorageKey":"animes/test/upscaled.mp4","status":"completed"}}`))
+		w.Write([]byte(`{"id":"job-123","status":"COMPLETED","output":{"resultStorageKey":"animes/test/upscaled.mp4","status":"completed","variantHeights":"","stageTimings":{"model":184.84,"total":203.07}}}`))
 	}))
 	defer server.Close()
 
@@ -114,7 +114,7 @@ func TestRunPodClient_Status_Completed(t *testing.T) {
 		t.Errorf("expected COMPLETED, got %s", status.Status)
 	}
 
-	if status.Output["resultStorageKey"] != "animes/test/upscaled.mp4" {
+	if status.Output.ResultStorageKey != "animes/test/upscaled.mp4" {
 		t.Errorf("expected resultStorageKey in output, got %v", status.Output)
 	}
 }
